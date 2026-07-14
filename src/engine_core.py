@@ -1,9 +1,11 @@
 """
 engine_core.py
 CERAF Core Intelligence: Negamax, Alpha-Beta Pruning, Transposition Tables, and Quiescence Search.
+(Adapted for native python-chess integration)
 """
 import time
 import logging
+import chess
 from typing import Optional, List, Dict, Tuple, Any
 
 logger = logging.getLogger(__name__)
@@ -29,9 +31,7 @@ class CERAFEngine:
     def __init__(self, brain: Any):
         self.brain = brain
         self.transposition_table: Dict[int, Tuple[int, int, int, Any]] = {}
-        # Killer moves: stores 2 non-capture moves per depth that caused a beta cutoff
         self.killer_moves: Dict[int, List[Any]] = {} 
-        # History heuristic: scores quiet moves that are good across different branches
         self.history_heuristic: Dict[Tuple[int, int], int] = {}
         
         self.nodes_evaluated: int = 0
@@ -40,63 +40,75 @@ class CERAFEngine:
         self.stop_flag: bool = False
 
     def _check_time(self) -> None:
-        """Polls the clock every 2048 nodes to minimize syscall overhead."""
         if self.nodes_evaluated & 2047 == 0:
             if time.time() - self.start_time > self.max_time:
                 self.stop_flag = True
 
-    def score_move(self, move: Any, ply: int) -> int:
-        """
-        Calculates move priority for sorting. 
-        Higher scores are evaluated first, maximizing Alpha-Beta pruning efficiency.
-        """
+    def evaluate_static(self, board: chess.Board) -> int:
+        """Simple material evaluator since python-chess doesn't have one built-in."""
         score = 0
-        if move.capture:
-            # MVV-LVA: E.g., Pawn taking Queen = 900 - 100 + 10000 = 10800
-            score += 10000 + PIECE_VALUES[move.captured_piece] - PIECE_VALUES[move.piece]
+        for square in chess.SQUARES:
+            piece = board.piece_at(square)
+            if piece:
+                val = PIECE_VALUES[piece.symbol()]
+                if piece.color == chess.WHITE:
+                    score += val
+                else:
+                    score -= val
+        # Return perspective score (positive means good for the side to move)
+        return score if board.turn == chess.WHITE else -score
+
+    def score_move(self, board: chess.Board, move: chess.Move, ply: int) -> int:
+        """Calculates move priority for sorting to maximize Alpha-Beta pruning."""
+        score = 0
+        if board.is_capture(move):
+            # Target piece (fallback to 100 for En Passant where to_square is empty)
+            captured_piece = board.piece_at(move.to_square)
+            cap_val = PIECE_VALUES[captured_piece.symbol()] if captured_piece else 100
+            
+            moving_piece = board.piece_at(move.from_square)
+            move_val = PIECE_VALUES[moving_piece.symbol()] if moving_piece else 100
+            
+            score += 10000 + cap_val - move_val
         elif move.promotion:
-            score += 9000 + PIECE_VALUES[move.promotion]
+            # Add value for Queen promotion
+            score += 9000 + 900 
         else:
             # Killer Move Heuristic
             killers = self.killer_moves.get(ply, [])
             if move in killers:
                 score += 5000
             # History Heuristic fallback
-            score += self.history_heuristic.get((move.origin, move.target), 0)
+            score += self.history_heuristic.get((move.from_square, move.to_square), 0)
         return score
 
-    def order_moves(self, moves: List[Any], ply: int) -> List[Any]:
-        """Sorts moves based on heuristic priority."""
-        return sorted(moves, key=lambda m: self.score_move(m, ply), reverse=True)
+    def order_moves(self, board: chess.Board, moves: List[chess.Move], ply: int) -> List[chess.Move]:
+        return sorted(moves, key=lambda m: self.score_move(board, m, ply), reverse=True)
 
-    def quiescence_search(self, board: Any, alpha: int, beta: int) -> int:
-        """
-        Mitigates the Horizon Effect by continuing the search until the board is 'quiet'
-        (no profitable captures exist).
-        """
+    def quiescence_search(self, board: chess.Board, alpha: int, beta: int) -> int:
         self.nodes_evaluated += 1
         self._check_time()
         if self.stop_flag:
             return 0
 
-        # Base evaluation integrated with the reinforcement learning ledger
-        board_hash = board.zobrist_hash()
+        # EPD string acts as a perfect board hash without move counters
+        board_hash = hash(board.epd())
         learning_multiplier = self.brain.get_multiplier(str(board_hash))
-        stand_pat = int(board.evaluate_static() * learning_multiplier)
+        stand_pat = int(self.evaluate_static(board) * learning_multiplier)
 
         if stand_pat >= beta:
             return beta
         if alpha < stand_pat:
             alpha = stand_pat
 
-        # Generate ONLY tactical moves (captures/promotions)
-        tactical_moves = board.generate_tactical_moves()
-        tactical_moves = self.order_moves(tactical_moves, ply=0)
+        # Generate ONLY tactical moves
+        tactical_moves = list(board.generate_legal_captures())
+        tactical_moves = self.order_moves(board, tactical_moves, ply=0)
 
         for move in tactical_moves:
-            board.apply_move(move)
+            board.push(move)
             score = -self.quiescence_search(board, -beta, -alpha)
-            board.undo_move()
+            board.pop()
 
             if score >= beta:
                 return beta
@@ -105,18 +117,13 @@ class CERAFEngine:
 
         return alpha
 
-    def negamax(self, board: Any, depth: int, alpha: int, beta: int, ply: int) -> int:
-        """
-        The core mathematically optimized Alpha-Beta search.
-        Relies on the zero-sum property: score_max(a, b) == -score_min(-b, -a).
-        """
+    def negamax(self, board: chess.Board, depth: int, alpha: int, beta: int, ply: int) -> int:
         self.nodes_evaluated += 1
         self._check_time()
         if self.stop_flag:
             return 0
 
-        # 1. Transposition Table Lookup
-        board_hash = board.zobrist_hash()
+        board_hash = hash(board.epd())
         original_alpha = alpha
         
         if board_hash in self.transposition_table:
@@ -129,7 +136,6 @@ class CERAFEngine:
                 elif tt_flag == TT_BETA and tt_score >= beta:
                     return beta
 
-        # 2. Base Case: Drop into Quiescence
         if depth == 0 or board.is_game_over():
             return self.quiescence_search(board, alpha, beta)
 
@@ -137,20 +143,18 @@ class CERAFEngine:
         best_move = None
         hash_flag = TT_ALPHA
 
-        # 3. Move Generation and Ordering
-        moves = board.generate_legal_moves()
+        moves = list(board.legal_moves)
         if not moves:
-            if board.is_in_check():
-                return -30000 + ply  # Checkmate (prefer faster mates)
+            if board.is_check():
+                return -30000 + ply  # Checkmate
             return 0  # Stalemate
 
-        moves = self.order_moves(moves, ply)
+        moves = self.order_moves(board, moves, ply)
 
         for move in moves:
-            board.apply_move(move)
-            # Mathematical recursion: flip perspective and bounds
+            board.push(move)
             score = -self.negamax(board, depth - 1, -beta, -alpha, ply + 1)
-            board.undo_move()
+            board.pop()
 
             if self.stop_flag:
                 return 0
@@ -163,28 +167,21 @@ class CERAFEngine:
                 alpha = score
                 hash_flag = TT_EXACT
 
-            # 4. Alpha-Beta Pruning (Beta Cutoff)
             if alpha >= beta:
                 hash_flag = TT_BETA
-                # Record Killer and History heuristics for quiet moves
-                if not move.capture:
-                    self.history_heuristic[(move.origin, move.target)] = self.history_heuristic.get((move.origin, move.target), 0) + (depth * depth)
+                if not board.is_capture(move):
+                    self.history_heuristic[(move.from_square, move.to_square)] = self.history_heuristic.get((move.from_square, move.to_square), 0) + (depth * depth)
                     if ply not in self.killer_moves:
                         self.killer_moves[ply] = []
                     if move not in self.killer_moves[ply]:
                         self.killer_moves[ply].insert(0, move)
-                        self.killer_moves[ply] = self.killer_moves[ply][:2] # Keep only top 2
+                        self.killer_moves[ply] = self.killer_moves[ply][:2]
                 break
 
-        # 5. Transposition Table Store
         self.transposition_table[board_hash] = (depth, best_score, hash_flag, best_move)
         return best_score
 
-    def search(self, board: Any, max_time: float = 2.0, max_depth: int = 100) -> Optional[Any]:
-        """
-        Iterative Deepening framework. Wraps the Negamax loop to ensure
-        CERAF always has a valid move to return before time runs out.
-        """
+    def search(self, board: chess.Board, max_time: float = 2.0, max_depth: int = 100) -> Optional[chess.Move]:
         self.start_time = time.time()
         self.max_time = max_time
         self.stop_flag = False
@@ -192,29 +189,23 @@ class CERAFEngine:
         
         best_move = None
         
-        # Iterative Deepening: Search depth 1, then 2, then 3...
         for current_depth in range(1, max_depth + 1):
             if self.stop_flag:
                 break
                 
-            # Initial Alpha/Beta window
             score = self.negamax(board, current_depth, -50000, 50000, ply=0)
             
             if self.stop_flag:
                 break
                 
-            # Extract the best move path from the Transposition Table
-            tt_entry = self.transposition_table.get(board.zobrist_hash())
+            tt_entry = self.transposition_table.get(hash(board.epd()))
             if tt_entry:
                 best_move = tt_entry[3]
                 
             elapsed = time.time() - self.start_time
             nps = int(self.nodes_evaluated / (elapsed + 0.0001))
             
-            # Output UCI-compliant info string
             logger.info(f"info depth {current_depth} score cp {score} nodes {self.nodes_evaluated} nps {nps} time {int(elapsed * 1000)}")
 
-        # Clear heuristics between moves to prevent stale data poisoning the tree
         self.killer_moves.clear()
-        
         return best_move
