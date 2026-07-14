@@ -405,19 +405,26 @@
         }
     }
 
-    async function triggerPythonAI() {
-        const fen = game.fen();
-        // Call the Python logic
-        const bestMoveUCI = await pyodide.runPythonAsync(`get_best_move("${fen}")`);
-        
-        if (bestMoveUCI) {
-            const result = game.move(bestMoveUCI, {sloppy: true});
-            logMove(result.san, false);
-            cerafText.innerText = '"Your turn! hehehe."'; //[cite: 1]
-            statusLabel.innerText = "Your Turn (White)";
-            statusLabel.style.color = "#00E676";
-            renderBoard();
-            checkGameOver();
+ async function triggerPythonAI() {
+        try {
+            const fen = game.fen();
+            // Call the Python logic
+            const bestMoveUCI = await pyodide.runPythonAsync(`get_best_move("${fen}")`);
+            
+            if (bestMoveUCI) {
+                const result = game.move(bestMoveUCI, {sloppy: true});
+                logMove(result.san, false);
+                cerafText.innerText = '"Your turn! hehehe."'; 
+                statusLabel.innerText = "Your Turn (White)";
+                statusLabel.style.color = "#00E676";
+                renderBoard();
+                checkGameOver();
+            }
+        } catch (error) {
+            console.error("AI Error:", error);
+            statusLabel.innerText = "Engine Crashed!";
+            statusLabel.style.color = "#ef5350";
+            cerafText.innerText = '"Oops... my brain just threw an exception. Check the console!"';
         }
     }
 
