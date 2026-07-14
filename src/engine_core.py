@@ -1,116 +1,375 @@
 """
-engine_core.py
-CERAF Core Intelligence: Negamax, Alpha-Beta Pruning, Transposition Tables, and Quiescence Search.
-(Adapted for native python-chess integration)
+CERAF engine_core.py
+A browser-friendly chess engine for Pyodide + python-chess.
+
+Features:
+- Negamax with alpha-beta pruning
+- Iterative deepening
+- Quiescence search
+- Transposition table
+- Killer move and history heuristics
+- Simple positional evaluation
+- Optional browser "brain" memory multiplier
 """
+
+from __future__ import annotations
+
+import math
 import time
-import logging
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
+
 import chess
-from typing import Optional, List, Dict, Tuple, Any
 
-logger = logging.getLogger(__name__)
+MATE_SCORE = 30000
+INF = 10**9
 
-# Transposition Table Flags
-TT_EXACT = 0   # Exact evaluation score
-TT_ALPHA = 1   # Upper bound (Failed low)
-TT_BETA = 2    # Lower bound (Failed high)
-
-# MVV-LVA (Most Valuable Victim - Least Valuable Aggressor) Weights
 PIECE_VALUES = {
-    'p': 100, 'n': 320, 'b': 330, 'r': 500, 'q': 900, 'k': 20000,
-    'P': 100, 'N': 320, 'B': 330, 'R': 500, 'Q': 900, 'K': 20000,
-    None: 0
+    chess.PAWN: 100,
+    chess.KNIGHT: 320,
+    chess.BISHOP: 330,
+    chess.ROOK: 500,
+    chess.QUEEN: 900,
+    chess.KING: 0,
 }
 
+# Piece-square tables from White's perspective.
+# Values are centipawns. Black uses mirrored squares.
+PST_PAWN = [
+      0,   0,   0,   0,   0,   0,   0,   0,
+     50,  50,  50,  50,  50,  50,  50,  50,
+     10,  10,  20,  30,  30,  20,  10,  10,
+      5,   5,  10,  25,  25,  10,   5,   5,
+      0,   0,   0,  20,  20,   0,   0,   0,
+      5,  -5, -10,   0,   0, -10,  -5,   5,
+      5,  10,  10, -20, -20,  10,  10,   5,
+      0,   0,   0,   0,   0,   0,   0,   0,
+]
+
+PST_KNIGHT = [
+    -50, -40, -30, -30, -30, -30, -40, -50,
+    -40, -20,   0,   0,   0,   0, -20, -40,
+    -30,   0,  10,  15,  15,  10,   0, -30,
+    -30,   5,  15,  20,  20,  15,   5, -30,
+    -30,   0,  15,  20,  20,  15,   0, -30,
+    -30,   5,  10,  15,  15,  10,   5, -30,
+    -40, -20,   0,   5,   5,   0, -20, -40,
+    -50, -40, -30, -30, -30, -30, -40, -50,
+]
+
+PST_BISHOP = [
+    -20, -10, -10, -10, -10, -10, -10, -20,
+    -10,   0,   0,   0,   0,   0,   0, -10,
+    -10,   0,   5,  10,  10,   5,   0, -10,
+    -10,   5,   5,  10,  10,   5,   5, -10,
+    -10,   0,  10,  10,  10,  10,   0, -10,
+    -10,  10,  10,  10,  10,  10,  10, -10,
+    -10,   5,   0,   0,   0,   0,   5, -10,
+    -20, -10, -10, -10, -10, -10, -10, -20,
+]
+
+PST_ROOK = [
+      0,   0,   0,   5,   5,   0,   0,   0,
+     -5,   0,   0,   0,   0,   0,   0,  -5,
+     -5,   0,   0,   0,   0,   0,   0,  -5,
+     -5,   0,   0,   0,   0,   0,   0,  -5,
+     -5,   0,   0,   0,   0,   0,   0,  -5,
+     -5,   0,   0,   0,   0,   0,   0,  -5,
+      5,  10,  10,  10,  10,  10,  10,   5,
+      0,   0,   0,   0,   0,   0,   0,   0,
+]
+
+PST_QUEEN = [
+    -20, -10, -10,  -5,  -5, -10, -10, -20,
+    -10,   0,   0,   0,   0,   5,   0, -10,
+    -10,   0,   5,   5,   5,   5,   5, -10,
+     -5,   0,   5,   5,   5,   5,   0,  -5,
+      0,   0,   5,   5,   5,   5,   0,  -5,
+    -10,   5,   5,   5,   5,   5,   0, -10,
+    -10,   0,   5,   0,   0,   0,   0, -10,
+    -20, -10, -10,  -5,  -5, -10, -10, -20,
+]
+
+PST_KING_MID = [
+    -30, -40, -40, -50, -50, -40, -40, -30,
+    -30, -40, -40, -50, -50, -40, -40, -30,
+    -30, -40, -40, -50, -50, -40, -40, -30,
+    -30, -40, -40, -50, -50, -40, -40, -30,
+    -20, -30, -30, -40, -40, -30, -30, -20,
+    -10, -20, -20, -20, -20, -20, -20, -10,
+     20,  20,   0,   0,   0,   0,  20,  20,
+     20,  30,  10,   0,   0,  10,  30,  20,
+]
+
+PST_KING_END = [
+    -50, -30, -30, -30, -30, -30, -30, -50,
+    -30, -10,   0,   0,   0,   0, -10, -30,
+    -30,   0,  20,  30,  30,  20,   0, -30,
+    -30,  10,  30,  40,  40,  30,  10, -30,
+    -30,  10,  30,  40,  40,  30,  10, -30,
+    -30,   0,  20,  30,  30,  20,   0, -30,
+    -30, -20, -10,   0,   0, -10, -20, -30,
+    -50, -40, -30, -20, -20, -30, -40, -50,
+]
+
+
+def _mirror(square: int) -> int:
+    return chess.square_mirror(square)
+
+
+def _pst(piece_type: int, square: int, color: bool, endgame: bool) -> int:
+    table = {
+        chess.PAWN: PST_PAWN,
+        chess.KNIGHT: PST_KNIGHT,
+        chess.BISHOP: PST_BISHOP,
+        chess.ROOK: PST_ROOK,
+        chess.QUEEN: PST_QUEEN,
+        chess.KING: PST_KING_END if endgame else PST_KING_MID,
+    }[piece_type]
+    idx = square if color == chess.WHITE else _mirror(square)
+    val = table[idx]
+    return val
+
+
+def _safe_brain_multiplier(brain: Any, board: chess.Board) -> float:
+    if brain is None:
+        return 1.0
+    getter = getattr(brain, "get_multiplier", None)
+    if not callable(getter):
+        return 1.0
+    try:
+        mult = float(getter(board.epd()))
+    except Exception:
+        return 1.0
+    if not math.isfinite(mult):
+        return 1.0
+    return max(0.25, min(1.75, mult))
+
+
+def _game_phase(board: chess.Board) -> float:
+    """0.0 = endgame, 1.0 = middlegame."""
+    phase = 0
+    for pt, weight in (
+        (chess.QUEEN, 4),
+        (chess.ROOK, 2),
+        (chess.BISHOP, 1),
+        (chess.KNIGHT, 1),
+    ):
+        phase += weight * (len(board.pieces(pt, chess.WHITE)) + len(board.pieces(pt, chess.BLACK)))
+    return max(0.0, min(1.0, phase / 24.0))
+
+
+def _material_count(board: chess.Board) -> int:
+    total = 0
+    for pt, val in PIECE_VALUES.items():
+        if pt == chess.KING:
+            continue
+        total += val * (len(board.pieces(pt, chess.WHITE)) + len(board.pieces(pt, chess.BLACK)))
+    return total
+
+
+@dataclass
+class TTEntry:
+    depth: int
+    score: int
+    flag: int
+    best_move: Optional[chess.Move]
+
+
+TT_EXACT = 0
+TT_ALPHA = 1
+TT_BETA = 2
+
+
 class CERAFEngine:
-    __slots__ = [
-        'brain', 'transposition_table', 'killer_moves', 'history_heuristic',
-        'nodes_evaluated', 'start_time', 'max_time', 'stop_flag'
-    ]
-
-    def __init__(self, brain: Any):
+    def __init__(self, brain: Any = None):
         self.brain = brain
-        self.transposition_table: Dict[int, Tuple[int, int, int, Any]] = {}
-        self.killer_moves: Dict[int, List[Any]] = {} 
-        self.history_heuristic: Dict[Tuple[int, int], int] = {}
-        
-        self.nodes_evaluated: int = 0
-        self.start_time: float = 0.0
-        self.max_time: float = 0.0
-        self.stop_flag: bool = False
+        self.tt: Dict[str, TTEntry] = {}
+        self.killers: Dict[int, List[chess.Move]] = {}
+        self.history: Dict[Tuple[int, int, Optional[int]], int] = {}
 
-    def _check_time(self) -> None:
-        if self.nodes_evaluated & 2047 == 0:
-            if time.time() - self.start_time > self.max_time:
-                self.stop_flag = True
+        self.nodes = 0
+        self.start_time = 0.0
+        self.max_time = 1.5
+        self.stop = False
+        self.last_info: Dict[str, Any] = {}
 
-    def evaluate_static(self, board: chess.Board) -> int:
-        """Simple material evaluator since python-chess doesn't have one built-in."""
-        score = 0
-        for square in chess.SQUARES:
-            piece = board.piece_at(square)
-            if piece:
-                val = PIECE_VALUES[piece.symbol()]
-                if piece.color == chess.WHITE:
-                    score += val
-                else:
-                    score -= val
-        # Return perspective score (positive means good for the side to move)
-        return score if board.turn == chess.WHITE else -score
+    # ---------- Evaluation ----------
 
-    def score_move(self, board: chess.Board, move: chess.Move, ply: int) -> int:
-        """Calculates move priority for sorting to maximize Alpha-Beta pruning."""
-        score = 0
-        if board.is_capture(move):
-            # Target piece (fallback to 100 for En Passant where to_square is empty)
-            captured_piece = board.piece_at(move.to_square)
-            cap_val = PIECE_VALUES[captured_piece.symbol()] if captured_piece else 100
-            
-            moving_piece = board.piece_at(move.from_square)
-            move_val = PIECE_VALUES[moving_piece.symbol()] if moving_piece else 100
-            
-            score += 10000 + cap_val - move_val
-        elif move.promotion:
-            # Add value for Queen promotion
-            score += 9000 + 900 
-        else:
-            # Killer Move Heuristic
-            killers = self.killer_moves.get(ply, [])
-            if move in killers:
-                score += 5000
-            # History Heuristic fallback
-            score += self.history_heuristic.get((move.from_square, move.to_square), 0)
-        return score
-
-    def order_moves(self, board: chess.Board, moves: List[chess.Move], ply: int) -> List[chess.Move]:
-        return sorted(moves, key=lambda m: self.score_move(board, m, ply), reverse=True)
-
-    def quiescence_search(self, board: chess.Board, alpha: int, beta: int) -> int:
-        self.nodes_evaluated += 1
-        self._check_time()
-        if self.stop_flag:
+    def evaluate(self, board: chess.Board) -> int:
+        if board.is_checkmate():
+            return -MATE_SCORE
+        if board.is_stalemate() or board.is_insufficient_material() or board.is_seventyfive_moves():
             return 0
 
-        # EPD string acts as a perfect board hash without move counters
-      # Generate the raw EPD string as a stable, persistent board identifier
-        board_epd = board.epd()
-        learning_multiplier = self.brain.get_multiplier(board_epd)
-        stand_pat = int(self.evaluate_static(board) * learning_multiplier)
+        score = 0
+        endgame = _material_count(board) <= 2800
+        phase = _game_phase(board)
+
+        # Material + piece square tables
+        for square, piece in board.piece_map().items():
+            val = PIECE_VALUES[piece.piece_type]
+            pst_bonus = _pst(piece.piece_type, square, piece.color, endgame)
+            if piece.color == chess.WHITE:
+                score += val + pst_bonus
+            else:
+                score -= val + pst_bonus
+
+        # Mobility
+        side_to_move = board.turn
+        moves_now = board.legal_moves.count()
+        board.turn = not side_to_move
+        opp_moves = board.legal_moves.count()
+        board.turn = side_to_move
+        score += (moves_now - opp_moves) * 4
+
+        # Center control
+        for sq in [chess.D4, chess.E4, chess.D5, chess.E5]:
+            attackers_w = len(board.attackers(chess.WHITE, sq))
+            attackers_b = len(board.attackers(chess.BLACK, sq))
+            score += (attackers_w - attackers_b) * 8
+
+        # Bishop pair
+        if len(board.pieces(chess.BISHOP, chess.WHITE)) >= 2:
+            score += 30
+        if len(board.pieces(chess.BISHOP, chess.BLACK)) >= 2:
+            score -= 30
+
+        # Passed pawns
+        for color in (chess.WHITE, chess.BLACK):
+            pawns = board.pieces(chess.PAWN, color)
+            enemy_pawns = board.pieces(chess.PAWN, not color)
+            for sq in pawns:
+                file_ = chess.square_file(sq)
+                rank = chess.square_rank(sq)
+                passed = True
+                for ep in enemy_pawns:
+                    ef = chess.square_file(ep)
+                    er = chess.square_rank(ep)
+                    if abs(ef - file_) <= 1:
+                        if color == chess.WHITE and er > rank:
+                            passed = False
+                            break
+                        if color == chess.BLACK and er < rank:
+                            passed = False
+                            break
+                if passed:
+                    advance = rank if color == chess.WHITE else 7 - rank
+                    bonus = 12 + advance * 10
+                    score += bonus if color == chess.WHITE else -bonus
+
+        # King safety (simple)
+        for color in (chess.WHITE, chess.BLACK):
+            king_sq = board.king(color)
+            if king_sq is None:
+                continue
+            shields = 0
+            f = chess.square_file(king_sq)
+            r = chess.square_rank(king_sq)
+            for df in (-1, 0, 1):
+                for dr in (-1, 0, 1):
+                    if df == 0 and dr == 0:
+                        continue
+                    nf, nr = f + df, r + dr
+                    if 0 <= nf < 8 and 0 <= nr < 8:
+                        sq = chess.square(nf, nr)
+                        p = board.piece_at(sq)
+                        if p and p.color == color and p.piece_type == chess.PAWN:
+                            shields += 1
+            score += (shields * 8) if color == chess.WHITE else -(shields * 8)
+
+        # Endgame king activity
+        if endgame:
+            wk = board.king(chess.WHITE)
+            bk = board.king(chess.BLACK)
+            if wk is not None:
+                score += (7 - abs(3.5 - chess.square_file(wk)) - abs(3.5 - chess.square_rank(wk))) * 6
+            if bk is not None:
+                score -= (7 - abs(3.5 - chess.square_file(bk)) - abs(3.5 - chess.square_rank(bk))) * 6
+
+        # Blend by phase slightly so middlegame PST matters more than endgame PST
+        score = int(score * (0.80 + phase * 0.20))
+
+        # Apply browser "brain" memory multiplier
+        mult = _safe_brain_multiplier(self.brain, board)
+        score = int(score * mult)
+
+        return score if board.turn == chess.WHITE else -score
+
+    # ---------- Move ordering ----------
+
+    def mvv_lva(self, board: chess.Board, move: chess.Move) -> int:
+        if board.is_capture(move):
+            captured = board.piece_at(move.to_square)
+            if captured is None and board.is_en_passant(move):
+                captured_value = PIECE_VALUES[chess.PAWN]
+            elif captured is not None:
+                captured_value = PIECE_VALUES[captured.piece_type]
+            else:
+                captured_value = 0
+            mover = board.piece_at(move.from_square)
+            mover_value = PIECE_VALUES[mover.piece_type] if mover else 0
+            return 10000 + captured_value * 10 - mover_value
+        return 0
+
+    def score_move(self, board: chess.Board, move: chess.Move, ply: int, tt_move: Optional[chess.Move]) -> int:
+        score = 0
+
+        if tt_move is not None and move == tt_move:
+            return 500000
+
+        if move.promotion:
+            score += 20000 + PIECE_VALUES.get(move.promotion, 0)
+
+        if board.is_capture(move):
+            score += self.mvv_lva(board, move)
+
+        if board.gives_check(move):
+            score += 3000
+
+        killers = self.killers.get(ply, [])
+        if move in killers:
+            score += 8000
+
+        hist_key = (move.from_square, move.to_square, move.promotion)
+        score += self.history.get(hist_key, 0)
+        return score
+
+    def ordered_moves(self, board: chess.Board, ply: int, tt_move: Optional[chess.Move]) -> List[chess.Move]:
+        moves = list(board.legal_moves)
+        moves.sort(key=lambda mv: self.score_move(board, mv, ply, tt_move), reverse=True)
+        return moves
+
+    # ---------- Search ----------
+
+    def _time_up(self) -> None:
+        if self.nodes & 2047 == 0:
+            if time.perf_counter() - self.start_time >= self.max_time:
+                self.stop = True
+
+    def quiescence(self, board: chess.Board, alpha: int, beta: int, ply: int) -> int:
+        self.nodes += 1
+        self._time_up()
+        if self.stop:
+            return 0
+
+        stand_pat = self.evaluate(board)
 
         if stand_pat >= beta:
             return beta
-        if alpha < stand_pat:
+        if stand_pat > alpha:
             alpha = stand_pat
 
-        # Generate ONLY tactical moves
-        tactical_moves = list(board.generate_legal_captures())
-        tactical_moves = self.order_moves(board, tactical_moves, ply=0)
+        captures = [mv for mv in board.legal_moves if board.is_capture(mv) or board.gives_check(mv)]
+        captures.sort(key=lambda mv: self.score_move(board, mv, ply, None), reverse=True)
 
-        for move in tactical_moves:
+        for move in captures:
             board.push(move)
-            score = -self.quiescence_search(board, -beta, -alpha)
+            score = -self.quiescence(board, -beta, -alpha, ply + 1)
             board.pop()
 
+            if self.stop:
+                return 0
             if score >= beta:
                 return beta
             if score > alpha:
@@ -119,45 +378,47 @@ class CERAFEngine:
         return alpha
 
     def negamax(self, board: chess.Board, depth: int, alpha: int, beta: int, ply: int) -> int:
-        self.nodes_evaluated += 1
-        self._check_time()
-        if self.stop_flag:
+        self.nodes += 1
+        self._time_up()
+        if self.stop:
             return 0
 
-        board_hash = hash(board.epd())
+        if board.is_checkmate():
+            return -MATE_SCORE + ply
+        if board.is_stalemate() or board.is_insufficient_material() or board.is_seventyfive_moves():
+            return 0
+
+        fen_key = board.fen()
+        tt_entry = self.tt.get(fen_key)
+        tt_move = tt_entry.best_move if tt_entry else None
         original_alpha = alpha
-        
-        if board_hash in self.transposition_table:
-            tt_depth, tt_score, tt_flag, _ = self.transposition_table[board_hash]
-            if tt_depth >= depth:
-                if tt_flag == TT_EXACT:
-                    return tt_score
-                elif tt_flag == TT_ALPHA and tt_score <= alpha:
-                    return alpha
-                elif tt_flag == TT_BETA and tt_score >= beta:
-                    return beta
 
-        if depth == 0 or board.is_game_over():
-            return self.quiescence_search(board, alpha, beta)
+        if tt_entry is not None and tt_entry.depth >= depth:
+            if tt_entry.flag == TT_EXACT:
+                return tt_entry.score
+            if tt_entry.flag == TT_ALPHA and tt_entry.score <= alpha:
+                return tt_entry.score
+            if tt_entry.flag == TT_BETA and tt_entry.score >= beta:
+                return tt_entry.score
 
-        best_score = -float('inf')
+        if depth <= 0:
+            return self.quiescence(board, alpha, beta, ply)
+
+        best_score = -INF
         best_move = None
-        hash_flag = TT_ALPHA
+        moves = self.ordered_moves(board, ply, tt_move)
 
-        moves = list(board.legal_moves)
         if not moves:
-            if board.is_check():
-                return -30000 + ply  # Checkmate
-            return 0  # Stalemate
+            return -MATE_SCORE + ply if board.is_check() else 0
 
-        moves = self.order_moves(board, moves, ply)
+        local_flag = TT_ALPHA
 
         for move in moves:
             board.push(move)
             score = -self.negamax(board, depth - 1, -beta, -alpha, ply + 1)
             board.pop()
 
-            if self.stop_flag:
+            if self.stop:
                 return 0
 
             if score > best_score:
@@ -166,47 +427,90 @@ class CERAFEngine:
 
             if score > alpha:
                 alpha = score
-                hash_flag = TT_EXACT
+                local_flag = TT_EXACT
 
             if alpha >= beta:
-                hash_flag = TT_BETA
+                local_flag = TT_BETA
                 if not board.is_capture(move):
-                    self.history_heuristic[(move.from_square, move.to_square)] = self.history_heuristic.get((move.from_square, move.to_square), 0) + (depth * depth)
-                    if ply not in self.killer_moves:
-                        self.killer_moves[ply] = []
-                    if move not in self.killer_moves[ply]:
-                        self.killer_moves[ply].insert(0, move)
-                        self.killer_moves[ply] = self.killer_moves[ply][:2]
+                    hist_key = (move.from_square, move.to_square, move.promotion)
+                    self.history[hist_key] = self.history.get(hist_key, 0) + depth * depth
+                    killer_list = self.killers.setdefault(ply, [])
+                    if move not in killer_list:
+                        killer_list.insert(0, move)
+                        del killer_list[2:]
                 break
 
-        self.transposition_table[board_hash] = (depth, best_score, hash_flag, best_move)
+        if best_move is None:
+            best_move = moves[0]
+
+        self.tt[fen_key] = TTEntry(depth=depth, score=best_score, flag=local_flag, best_move=best_move)
         return best_score
 
-    def search(self, board: chess.Board, max_time: float = 2.0, max_depth: int = 100) -> Optional[chess.Move]:
-        self.start_time = time.time()
-        self.max_time = max_time
-        self.stop_flag = False
-        self.nodes_evaluated = 0
-        
-        best_move = None
-        
-        for current_depth in range(1, max_depth + 1):
-            if self.stop_flag:
-                break
-                
-            score = self.negamax(board, current_depth, -50000, 50000, ply=0)
-            
-            if self.stop_flag:
-                break
-                
-            tt_entry = self.transposition_table.get(hash(board.epd()))
-            if tt_entry:
-                best_move = tt_entry[3]
-                
-            elapsed = time.time() - self.start_time
-            nps = int(self.nodes_evaluated / (elapsed + 0.0001))
-            
-            logger.info(f"info depth {current_depth} score cp {score} nodes {self.nodes_evaluated} nps {nps} time {int(elapsed * 1000)}")
+    def search(self, board: chess.Board, max_time: float = 1.5, max_depth: int = 10) -> Optional[chess.Move]:
+        self.start_time = time.perf_counter()
+        self.max_time = max(0.05, float(max_time))
+        self.stop = False
+        self.nodes = 0
+        self.last_info = {}
 
-        self.killer_moves.clear()
+        # Copy the board so the caller never gets mutated.
+        root = board.copy(stack=False)
+        best_move: Optional[chess.Move] = None
+        best_score = -INF
+        best_pv: List[str] = []
+
+        alpha = -INF
+        beta = INF
+
+        for depth in range(1, max_depth + 1):
+            if self.stop:
+                break
+
+            # aspiration window around previous score
+            if depth > 1 and best_score > -INF // 2:
+                window = 50
+                alpha = best_score - window
+                beta = best_score + window
+            else:
+                alpha = -INF
+                beta = INF
+
+            while True:
+                score = self.negamax(root, depth, alpha, beta, 0)
+                if self.stop:
+                    break
+
+                # Fail low / fail high with aspiration window
+                if score <= alpha and alpha > -INF // 2:
+                    alpha -= 100
+                    continue
+                if score >= beta and beta < INF // 2:
+                    beta += 100
+                    continue
+                best_score = score
+                break
+
+            if self.stop:
+                break
+
+            tt_entry = self.tt.get(root.fen())
+            if tt_entry and tt_entry.best_move is not None:
+                best_move = tt_entry.best_move
+
+            elapsed = time.perf_counter() - self.start_time
+            nps = int(self.nodes / max(elapsed, 0.001))
+            pv = []
+            if best_move is not None:
+                pv.append(best_move.uci())
+
+            self.last_info = {
+                "depth": depth,
+                "score": best_score,
+                "nodes": self.nodes,
+                "nps": nps,
+                "time_ms": int(elapsed * 1000),
+                "pv": pv,
+            }
+
+        self.killers.clear()
         return best_move
