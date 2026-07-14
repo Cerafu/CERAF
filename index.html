@@ -323,14 +323,14 @@
                 cerafText.innerText = cerafWon ? '"Checkmate! hehehe."' : '"I yield! You are truly a master."';
                 
                 // --- PUNISH BAD MOVE ---
-                if (!cerafWon) {
-                    const finalFen = game.fen();
-                    pyodide.runPython(`
-                        board = chess.Board("${finalFen}")
-                        ceraf_brain.punish_position(hash(board.epd()))
-                    `);
-                    cerafText.innerText = '"I will remember this mistake..."';
-                }
+               if (!cerafWon) {
+    const finalFen = game.fen();
+    pyodide.runPython(`
+        board = chess.Board("${finalFen}")
+        ceraf_brain.punish_position(board.epd())
+    `);
+    cerafText.innerText = '"I will remember this mistake..."';
+}
             } else {
                 statusLabel.innerText = "DRAW";
                 statusLabel.style.color = "#aaaaaa";
@@ -388,27 +388,26 @@
                 from engine_core import CERAFEngine
                 
                 class WebBrain:
-                    def __init__(self):
-                        self.memory = {}
+    def __init__(self):
+        self.memory = {}
 
-                    def get_multiplier(self, board_hash):
-                        # If we've seen this position and assigned a weight, use it. Otherwise, 1.0.
-                        return self.memory.get(str(board_hash), 1.0)
+    def get_multiplier(self, board_epd):
+        # The key is now a stable EPD string
+        return self.memory.get(board_epd, 1.0)
 
-                    def punish_position(self, board_hash):
-                        # Reduce the multiplier so the engine avoids this position next time
-                        current_weight = self.get_multiplier(board_hash)
-                        self.memory[str(board_hash)] = max(0.1, current_weight - 0.2)
+    def punish_position(self, board_epd):
+        current_weight = self.get_multiplier(board_epd)
+        self.memory[board_epd] = max(0.1, current_weight - 0.2)
 
-                    def load_memory(self, json_string):
-                        if json_string:
-                            try:
-                                self.memory = json.loads(json_string)
-                            except:
-                                self.memory = {}
+    def load_memory(self, json_string):
+        if json_string:
+            try:
+                self.memory = json.loads(json_string)
+            except:
+                self.memory = {}
 
-                    def export_memory(self):
-                        return json.dumps(self.memory)
+    def export_memory(self):
+        return json.dumps(self.memory)
 
                 ceraf_brain = WebBrain()
                 engine = CERAFEngine(brain=ceraf_brain)
@@ -447,7 +446,7 @@
             if (bestMoveUCI) {
                 const result = game.move(bestMoveUCI, {sloppy: true});
                 logMove(result.san, false);
-                cerafText.innerText = '"Your turn! hehehe."'; 
+                cerafText.innerText = '"Your turn!."'; 
                 statusLabel.innerText = "Your Turn (White)";
                 statusLabel.style.color = "#00E676";
                 renderBoard();
