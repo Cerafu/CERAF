@@ -353,12 +353,12 @@
 
         try {
             // 1. Fetch your actual engine code from the src/ directory
-            const response = await fetch('src/engine_core.py');
-            if (!response.ok) throw new Error("Could not find src/engine_core.py");
+            const response = await fetch('src/engine.py');
+            if (!response.ok) throw new Error("Could not find src/engine.py");
             const engineCode = await response.text();
 
             // 2. Write the file into Pyodide's virtual file system
-            pyodide.FS.writeFile('/home/pyodide/engine_core.py', engineCode);
+            pyodide.FS.writeFile('/home/pyodide/engine.py', engineCode);
 
             // 3. Set up the Python Bridge to run your specific engine
             await pyodide.runPythonAsync(`
@@ -367,7 +367,7 @@
                 sys.path.append('/home/pyodide')
                 
                 # Import the real engine you wrote!
-                from engine_core import CERAFEngine
+                from engine import CERAFEngine
                 
                 # Create a simple mock brain for the web version 
                 # (since saving JSON files directly to the user's hard drive isn't possible in a browser)
