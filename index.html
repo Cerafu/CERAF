@@ -340,26 +340,69 @@
         renderBoard();
     }
 
-    // --- PYODIDE (PYTHON BACKEND) INTEGRATION ---
+// --- PYODIDE (PYTHON BACKEND) INTEGRATION ---
     async function initPyodide() {
+        cerafText.innerText = '"Waking up... Loading Python environment..."';
+        
         window.pyodide = await loadPyodide();
         await pyodide.loadPackage("micropip");
         const micropip = pyodide.pyimport("micropip");
-        await micropip.install("chess"); // Installs python-chess for your backend[cite: 1]
+        await micropip.install("chess"); 
 
-        // Here we define the Python bridge. In a real deployment, you can fetch("ceraf_core.py")
-        await pyodide.runPythonAsync(`
-            import chess
-            # Dummy hook for Pyodide UI bridge. 
-            # Replace this block with your actual minimax logic[cite: 1] in production.
-            def get_best_move(fen_string):
-                board = chess.Board(fen_string)
-                moves = list(board.legal_moves)
-                return moves[0].uci() if moves else None
-        `);
-        
-        pyodideReady = true;
-        resetGame();
+        cerafText.innerText = '"Fetching engine_core.py from source..."';
+
+        try {
+            // 1. Fetch your actual engine code from the src/ directory
+            const response = await fetch('src/engine_core.py');
+            if (!response.ok) throw new Error("Could not find src/engine_core.py");
+            const engineCode = await response.text();
+
+            // 2. Write the file into Pyodide's virtual file system
+            pyodide.FS.writeFile('/home/pyodide/engine_core.py', engineCode);
+
+            // 3. Set up the Python Bridge to run your specific engine
+            await pyodide.runPythonAsync(`
+                import sys
+                import chess
+                sys.path.append('/home/pyodide')
+                
+                # Import the real engine you wrote!
+                from engine_core import CERAFEngine
+                
+                # Create a simple mock brain for the web version 
+                # (since saving JSON files directly to the user's hard drive isn't possible in a browser)
+                class WebBrain:
+                    def get_multiplier(self, board_hash):
+                        return 1.0
+
+                ceraf_brain = WebBrain()
+                
+                # Initialize your powerful championship-grade engine
+                engine = CERAFEngine(brain=ceraf_brain)
+
+                def get_best_move(fen_string):
+                    board = chess.Board(fen_string)
+                    
+                    # Run your actual search algorithm (capped at 1.5 seconds so the browser doesn't freeze)
+                    # NOTE: If your engine_core.py expects custom board methods, 
+                    # you may need to wrap python-chess here.
+                    best_move = engine.search(board, max_time=1.5, max_depth=10)
+                    
+                    if best_move:
+                        # Ensure the move is returned as a UCI string (e.g., 'e2e4') for the Javascript frontend
+                        return best_move.uci() if hasattr(best_move, 'uci') else str(best_move)
+                    return None
+            `);
+            
+            pyodideReady = true;
+            resetGame();
+            
+        } catch (error) {
+            console.error("Engine Load Error:", error);
+            cerafText.innerText = '"Error loading engine_core.py! Check the console."';
+            statusLabel.innerText = "Engine Failed to Load";
+            statusLabel.style.color = "#ef5350";
+        }
     }
 
     async function triggerPythonAI() {
