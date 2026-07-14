@@ -92,8 +92,9 @@ class CERAFEngine:
             return 0
 
         # EPD string acts as a perfect board hash without move counters
-        board_hash = hash(board.epd())
-        learning_multiplier = self.brain.get_multiplier(str(board_hash))
+      # Generate the raw EPD string as a stable, persistent board identifier
+        board_epd = board.epd()
+        learning_multiplier = self.brain.get_multiplier(board_epd)
         stand_pat = int(self.evaluate_static(board) * learning_multiplier)
 
         if stand_pat >= beta:
