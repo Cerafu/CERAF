@@ -353,7 +353,7 @@
 
         try {
             // 1. Fetch your actual engine code from the src/ directory
-            const response = await fetch('src/engine_core.py');
+            const response = await fetch('src/engine_core.py', { cache: "no-store" });
             if (!response.ok) throw new Error("Could not find src/engine_core.py");
             const engineCode = await response.text();
 
