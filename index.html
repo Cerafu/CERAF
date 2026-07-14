@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Web-Based Python Chess AI</title>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+    <style>
+        body { font-family: monospace; background: #1e1e1e; color: #00ff00; padding: 20px; }
+        #console { height: 400px; overflow-y: auto; border: 1px solid #333; padding: 10px; margin-bottom: 10px; }
+        input { width: 80%; padding: 5px; background: #000; color: #00ff00; border: 1px solid #333; }
+    </style>
+</head>
+<body>
+    <h2>PyChess Learning Engine - Web Assembly</h2>
+    <div id="console"></div>
+    <input type="text" id="uci-input" placeholder="Type UCI command (e.g., 'uci', 'go', 'position startpos') and press Enter..." disabled>
+
+    <script>
+        const outputConsole = document.getElementById("console");
+        const inputField = document.getElementById("uci-input");
+        let pyodide;
+
+        function logOutput(msg) {
+            outputConsole.innerHTML += `<div>> ${msg}</div>`;
+            outputConsole.scrollTop = outputConsole.scrollHeight;
+        }
+
+        async function initPyodide() {
+            logOutput("Initializing Python Engine via Pyodide...");
+            pyodide = await loadPyodide();
+            
+            // Fetch the engine.py file from your github repo
+            const response = await fetch('src/engine.py');
+            const pythonCode = await response.text();
+            
+            // Expose the logOutput function to Python's print
+            pyodide.globals.set("print_js", logOutput);
+            
+            // Run a modified wrapper to execute commands asynchronously 
+            await pyodide.runPythonAsync(`
+                import sys
+                from js import print_js
+                
+                class WebStdout:
+                    def write(self, text):
+                        if text.strip(): print_js(text.strip())
+                    def flush(self): pass
+                
+                sys.stdout = WebStdout()
+                ${pythonCode.replace('if __name__ == "__main__":\n    uci_loop()', '')}
+                
+                brain = Brain()
+                engine = Engine(brain)
+                
+                def process_uci_command(cmd):
+                    tokens = cmd.split()
+                    if not tokens: return
+                    command = tokens[0]
+                    
+                    if command == "uci":
+                        print("id name PyChess Web Prototype")
+                        print("uciok")
+                    elif command == "isready":
+                        print("readyok")
+                    elif command == "position":
+                        engine.set_position(tokens)
+                    elif command == "go":
+                        move = engine.calculate_best_move()
+                        print(f"bestmove {move}")
+            `);
+            
+            logOutput("Engine Ready. Type 'uci' to begin.");
+            inputField.disabled = false;
+        }
+
+        inputField.addEventListener("keypress", (e) => {
+            if (e.key === "Enter") {
+                const cmd = inputField.value;
+                logOutput(`User: ${cmd}`);
+                pyodide.runPython(`process_uci_command("${cmd}")`);
+                inputField.value = "";
+            }
+        });
+
+        initPyodide();
+    </script>
+</body>
+</html>
