@@ -1,468 +1,1107 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CERAF - Self-Learning AI</title>
-    <!-- Load Pyodide for Python execution and Chess.js for client-side move validation -->
-    <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
-    
-    <style>
-        body {
-            background-color: #1c1c1c; /* Matches your Tkinter background[cite: 1] */
-            color: white;
-            font-family: Arial, sans-serif;
-            display: flex;
-            justify-content: center;
-            padding: 20px;
-            user-select: none;
-        }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CERAF Chess Engine</title>
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+  <style>
+    :root{
+      --bg:#121418;
+      --panel:#1b1f26;
+      --panel-2:#232a33;
+      --text:#eef2ff;
+      --muted:#9aa7b8;
+      --accent:#4dd0e1;
+      --good:#48e38a;
+      --warn:#f6c358;
+      --bad:#ff6b6b;
+      --light:#f0d9b5;
+      --dark:#b58863;
+      --light2:#f5e1c3;
+      --dark2:#8f6a4e;
+      --shadow: 0 18px 40px rgba(0,0,0,.35);
+    }
 
-        #game-container { display: flex; gap: 20px; }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      min-height:100vh;
+      background: radial-gradient(circle at top, #1c2330 0, var(--bg) 50%, #0b0d11 100%);
+      color:var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      display:flex;
+      justify-content:center;
+      align-items:flex-start;
+      padding:24px;
+    }
 
-        /* Board Container with relative positioning for SVG Arrows */
-        #board-wrapper {
-            position: relative;
-            width: 576px; /* 8 squares * 72px[cite: 1] */
-            height: 576px;
-        }
+    .app{
+      width:min(1180px, 100%);
+      display:grid;
+      grid-template-columns: minmax(520px, 1fr) 360px;
+      gap:20px;
+      align-items:start;
+    }
 
-        #board {
-            display: grid;
-            grid-template-columns: repeat(8, 1fr);
-            grid-template-rows: repeat(8, 1fr);
-            width: 100%;
-            height: 100%;
-            border: 2px solid #333;
-        }
+    .board-shell, .sidebar{
+      background: rgba(20,24,30,.82);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,.08);
+      box-shadow: var(--shadow);
+      border-radius: 24px;
+    }
 
-        .square {
-            width: 72px;
-            height: 72px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 50px;
-            cursor: pointer;
-            position: relative;
-        }
+    .board-shell{
+      padding:18px;
+    }
 
-        .light { background-color: #eeeed2; } /* Matches prototype colors[cite: 1] */
-        .dark { background-color: #769656; }
-        .highlight { background-color: #f7f785 !important; }
-        .last-move-light { background-color: #e2e485; }
-        .last-move-dark { background-color: #b7c45d; }
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:16px;
+      flex-wrap:wrap;
+    }
 
-        /* Contrasting Pieces: Black outline on White pieces, White outline on Black pieces */
-        .piece {
-            z-index: 10;
-            transition: transform 0.1s;
-        }
-        .piece.white {
-            color: #ffffff; /*[cite: 1] */
-            -webkit-text-stroke: 1.5px #1a1a1a;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
-        }
-        .piece.black {
-            color: #1a1a1a; /*[cite: 1] */
-            -webkit-text-stroke: 1px #ffffff;
-            text-shadow: 0 2px 4px rgba(255,255,255,0.3);
-        }
-        .piece.dragging {
-            position: fixed;
-            pointer-events: none;
-            z-index: 1000;
-            transform: scale(1.2);
-        }
+    .title-wrap h1{
+      margin:0;
+      font-size:22px;
+      letter-spacing:.4px;
+    }
+    .title-wrap p{
+      margin:4px 0 0;
+      color:var(--muted);
+      font-size:13px;
+    }
 
-        /* SVG Overlay for Arrows */
-        #arrow-svg {
-            position: absolute;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            pointer-events: none; /* Lets clicks pass through to the board */
-            z-index: 20;
-        }
-        .arrow-line { stroke: rgba(255, 170, 0, 0.8); stroke-width: 12; stroke-linecap: round; }
-        .arrow-head { fill: rgba(255, 170, 0, 0.8); }
+    .controls{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+    }
 
-        /* Sidebar UI matching your Tkinter layout[cite: 1] */
-        #sidebar {
-            width: 260px;
-            background-color: #262626;
-            padding: 10px;
-            border-radius: 5px;
-            display: flex;
-            flex-direction: column;
-        }
-        #dialogue-frame {
-            background-color: #1a1a1a;
-            border: 2px solid #4dd0e1;
-            padding: 10px;
-            margin-bottom: 15px;
-        }
-        #ceraf-title { color: #4dd0e1; font-weight: bold; font-size: 14px; margin-bottom: 5px; }
-        #ceraf-text { font-style: italic; font-size: 14px; color: white; min-height: 40px; }
-        
-        #log-container { flex-grow: 1; background-color: #121212; padding: 10px; overflow-y: auto; color: #00E676; font-family: monospace; margin-bottom: 15px;}
-        #status-label { font-weight: bold; color: #00E676; text-align: center; margin-bottom: 15px; font-size: 16px;}
-        button { background-color: #d9534f; color: white; border: none; padding: 10px; font-weight: bold; cursor: pointer; }
-        button:hover { background-color: #c9302c; }
-    </style>
+    button{
+      appearance:none;
+      border:none;
+      outline:none;
+      cursor:pointer;
+      border-radius:14px;
+      padding:10px 14px;
+      font-weight:700;
+      color:#081017;
+      background: linear-gradient(180deg, #8ff1ff, #4dd0e1);
+      box-shadow: 0 8px 20px rgba(77,208,225,.24);
+      transition: transform .12s ease, opacity .12s ease;
+    }
+    button:hover{ transform: translateY(-1px); }
+    button.secondary{
+      color:var(--text);
+      background: linear-gradient(180deg, #2d3642, #1f2630);
+      border: 1px solid rgba(255,255,255,.08);
+      box-shadow:none;
+    }
+
+    .board-area{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:14px;
+    }
+
+    .board-wrap{
+      position:relative;
+      width:min(100%, 760px);
+      aspect-ratio: 1/1;
+      margin:auto;
+      border-radius: 22px;
+      overflow:hidden;
+      border: 1px solid rgba(255,255,255,.08);
+      background: #111;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.04);
+    }
+
+    #board{
+      width:100%;
+      height:100%;
+      display:grid;
+      grid-template-columns: repeat(8, 1fr);
+      grid-template-rows: repeat(8, 1fr);
+    }
+
+    .sq{
+      position:relative;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      user-select:none;
+      touch-action:none;
+    }
+
+    .sq.light{ background: linear-gradient(180deg, var(--light2), var(--light)); }
+    .sq.dark{ background: linear-gradient(180deg, var(--dark), var(--dark2)); }
+
+    .sq.last::after{
+      content:"";
+      position:absolute;
+      inset:0;
+      background: rgba(255, 245, 140, .22);
+      pointer-events:none;
+    }
+
+    .sq.selected{
+      outline: 4px solid rgba(77,208,225,.55);
+      outline-offset:-4px;
+    }
+
+    .sq.move::before,
+    .sq.capture::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+    }
+
+    .sq.move::before{
+      width:18%;
+      height:18%;
+      border-radius:50%;
+      background: rgba(17, 24, 39, .28);
+    }
+
+    .sq.capture::before{
+      width:72%;
+      height:72%;
+      border-radius:50%;
+      border: 5px solid rgba(17,24,39,.24);
+    }
+
+    .piece{
+      position:relative;
+      z-index:2;
+      width:88%;
+      height:88%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      filter: drop-shadow(0 10px 12px rgba(0,0,0,.28));
+      transition: transform .12s ease;
+    }
+    .piece.dragging{
+      position:fixed;
+      z-index:1000;
+      pointer-events:none;
+      transform: scale(1.08);
+    }
+
+    .piece svg{
+      width:100%;
+      height:100%;
+      overflow:visible;
+    }
+
+    .piece .shadow{
+      fill: rgba(0,0,0,.24);
+      transform: translateY(4px);
+    }
+
+    .piece .body-white{
+      fill: url(#whiteGrad);
+      stroke: rgba(40,40,40,.72);
+      stroke-width: 3;
+    }
+
+    .piece .body-black{
+      fill: url(#blackGrad);
+      stroke: rgba(255,255,255,.14);
+      stroke-width: 3;
+    }
+
+    .piece .glyph{
+      font-family: "Georgia", "Times New Roman", serif;
+      font-size: 58px;
+      font-weight: 700;
+      text-anchor: middle;
+      dominant-baseline: central;
+    }
+
+    .piece .glyph.white{
+      fill: #f7fbff;
+      stroke: rgba(19,24,33,.7);
+      stroke-width: 2.4;
+      paint-order: stroke fill;
+    }
+
+    .piece .glyph.black{
+      fill: #11161e;
+      stroke: rgba(255,255,255,.5);
+      stroke-width: 1.2;
+      paint-order: stroke fill;
+    }
+
+    .overlay{
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+    }
+
+    .arrow-line{
+      stroke: rgba(255, 194, 74, .78);
+      stroke-width: 12;
+      stroke-linecap: round;
+    }
+    .arrow-head{ fill: rgba(255, 194, 74, .78); }
+
+    .status-row{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      width:min(100%, 760px);
+      margin:auto;
+      color:var(--muted);
+      font-size:13px;
+    }
+
+    .status-pill{
+      padding:8px 12px;
+      border-radius:999px;
+      background: rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.08);
+      color:var(--text);
+      font-weight:700;
+    }
+
+    .sidebar{
+      padding:16px;
+      position:sticky;
+      top:24px;
+    }
+
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.025));
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:18px;
+      padding:14px;
+      margin-bottom:14px;
+    }
+
+    .card h2{
+      margin:0 0 10px;
+      font-size:14px;
+      color:var(--accent);
+      letter-spacing:.3px;
+      text-transform:uppercase;
+    }
+
+    .ceraf-text{
+      min-height:54px;
+      line-height:1.45;
+      color:var(--text);
+      font-style:italic;
+    }
+
+    .meta-grid{
+      display:grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap:10px;
+    }
+
+    .meta{
+      background: rgba(0,0,0,.18);
+      border-radius:14px;
+      padding:12px;
+      border:1px solid rgba(255,255,255,.06);
+    }
+    .meta .label{
+      color:var(--muted);
+      font-size:12px;
+      margin-bottom:4px;
+    }
+    .meta .value{
+      font-size:18px;
+      font-weight:800;
+      letter-spacing:.2px;
+    }
+
+    .eval-wrap{
+      display:grid;
+      grid-template-columns: 28px 1fr 28px;
+      gap:10px;
+      align-items:stretch;
+    }
+
+    .eval-side{
+      display:flex;
+      flex-direction:column;
+      justify-content:space-between;
+      align-items:center;
+      color:var(--muted);
+      font-size:12px;
+      padding:2px 0;
+    }
+
+    .eval-bar{
+      position:relative;
+      min-height:180px;
+      border-radius:999px;
+      overflow:hidden;
+      background: #0e1117;
+      border:1px solid rgba(255,255,255,.08);
+    }
+
+    .eval-fill{
+      position:absolute;
+      left:0;
+      right:0;
+      bottom:50%;
+      height:50%;
+      background: linear-gradient(180deg, #d2f8ff, #4dd0e1);
+      transform-origin: bottom;
+      transition: height .18s ease;
+    }
+
+    .move-list{
+      max-height:280px;
+      overflow:auto;
+      display:grid;
+      gap:6px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size:13px;
+    }
+
+    .move-row{
+      display:grid;
+      grid-template-columns: 44px 1fr 1fr;
+      gap:8px;
+      padding:8px 10px;
+      background: rgba(0,0,0,.16);
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.06);
+    }
+
+    .move-row .num{ color: var(--muted); }
+    .move-row .w{ color:#f4f7ff; }
+    .move-row .b{ color:#c6d0dd; }
+
+    .promotion-modal{
+      position:fixed;
+      inset:0;
+      background: rgba(5,8,12,.55);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      z-index:2000;
+    }
+
+    .promotion-modal.show{ display:flex; }
+
+    .promo-box{
+      background: #171c24;
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:20px;
+      box-shadow: var(--shadow);
+      padding:16px;
+      display:grid;
+      gap:10px;
+      min-width:280px;
+      text-align:center;
+    }
+
+    .promo-box h3{ margin:0 0 6px; }
+    .promo-grid{
+      display:grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap:10px;
+    }
+
+    .promo-btn{
+      background: linear-gradient(180deg, #2f3846, #1b2028);
+      color:var(--text);
+      border:1px solid rgba(255,255,255,.08);
+      box-shadow:none;
+      border-radius:14px;
+      padding:14px 0;
+      font-size:34px;
+      line-height:1;
+    }
+
+    .promo-btn:hover{ transform: translateY(-1px); }
+
+    @media (max-width: 980px){
+      .app{ grid-template-columns: 1fr; }
+      .sidebar{ position:relative; top:auto; }
+    }
+
+    @media (max-width: 640px){
+      body{ padding:12px; }
+      .board-shell, .sidebar{ border-radius:18px; }
+      .board-shell{ padding:12px; }
+      .title-wrap h1{ font-size:18px; }
+      .meta-grid{ grid-template-columns:1fr; }
+      .move-row{ grid-template-columns: 36px 1fr 1fr; }
+      .promo-grid{ grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
 </head>
 <body>
-
-<div id="game-container">
-    <div id="board-wrapper">
-        <div id="board"></div>
-        <svg id="arrow-svg">
-            <defs>
-                <marker id="arrowhead" markerWidth="4" markerHeight="4" refX="2" refY="2" orient="auto">
-                    <polygon points="0 0, 4 2, 0 4" class="arrow-head" />
-                </marker>
-            </defs>
-            <g id="arrows-group"></g>
-            <line id="drawing-arrow" class="arrow-line" marker-end="url(#arrowhead)" style="display:none;" />
-        </svg>
-    </div>
-
-    <div id="sidebar">
-        <div id="dialogue-frame">
-            <div id="ceraf-title">🧠 CERAF says:</div>
-            <div id="ceraf-text">"Loading Pyodide brain modules... Please wait."</div>
+  <div class="app">
+    <section class="board-shell">
+      <div class="topbar">
+        <div class="title-wrap">
+          <h1>CERAF Chess Engine</h1>
+          <p>Clean Pyodide bridge, stronger search, smoother board, better piece rendering.</p>
         </div>
-        <div style="text-align: center; color: #aaa; font-weight: bold; margin-bottom: 5px;">Live Notation Log</div>
-        <div id="log-container"></div>
-        <div id="status-label">Engine Initializing...</div>
-        <button onclick="resetGame()">Restart Match</button>
+        <div class="controls">
+          <button id="newGameBtn">New Game</button>
+          <button id="flipBtn" class="secondary">Flip Board</button>
+          <button id="undoBtn" class="secondary">Undo</button>
+        </div>
+      </div>
+
+      <div class="board-area">
+        <div class="board-wrap" id="boardWrap">
+          <div id="board" aria-label="Chess board"></div>
+
+          <svg class="overlay" id="overlay">
+            <defs>
+              <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+                <polygon points="0 0, 8 4, 0 8" class="arrow-head"></polygon>
+              </marker>
+            </defs>
+            <g id="arrowsGroup"></g>
+            <line id="drawingArrow" class="arrow-line" marker-end="url(#arrowhead)" style="display:none;"></line>
+          </svg>
+        </div>
+
+        <div class="status-row">
+          <div class="status-pill" id="statusLabel">Loading engine…</div>
+          <div id="fenLabel">Ready</div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="sidebar">
+      <div class="card">
+        <h2>CERAF</h2>
+        <div class="ceraf-text" id="cerafText">"Loading Pyodide brain modules…"</div>
+      </div>
+
+      <div class="card">
+        <h2>Engine Stats</h2>
+        <div class="meta-grid">
+          <div class="meta"><div class="label">Depth</div><div class="value" id="depthValue">0</div></div>
+          <div class="meta"><div class="label">Nodes</div><div class="value" id="nodesValue">0</div></div>
+          <div class="meta"><div class="label">NPS</div><div class="value" id="npsValue">0</div></div>
+          <div class="meta"><div class="label">Score</div><div class="value" id="scoreValue">0</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Evaluation</h2>
+        <div class="eval-wrap">
+          <div class="eval-side"><span>Black</span><span>-</span></div>
+          <div class="eval-bar"><div class="eval-fill" id="evalFill"></div></div>
+          <div class="eval-side"><span>+</span><span>White</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Move List</h2>
+        <div class="move-list" id="moveList"></div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="promotion-modal" id="promotionModal">
+    <div class="promo-box">
+      <h3>Promote to</h3>
+      <div class="promo-grid" id="promotionChoices"></div>
     </div>
-</div>
+  </div>
 
 <script>
-    const unicodePieces = {
-        'R': '♜', 'N': '♞', 'B': '♝', 'Q': '♛', 'K': '♚', 'P': '♟',
-        'r': '♜', 'n': '♞', 'b': '♝', 'q': '♛', 'k': '♚', 'p': '♟'
-    }; // Matching your Tkinter Unicode mapping[cite: 1]
+(() => {
+  const PIECE_SYMBOL = {
+    p: "♟", n: "♞", b: "♝", r: "♜", q: "♛", k: "♚",
+  };
 
-    let game = new Chess();
-    const boardEl = document.getElementById("board");
-    const arrowsGroup = document.getElementById("arrows-group");
-    const drawingArrow = document.getElementById("drawing-arrow");
-    const cerafText = document.getElementById("ceraf-text");
-    const statusLabel = document.getElementById("status-label");
-    const logContainer = document.getElementById("log-container");
+  const boardEl = document.getElementById("board");
+  const overlay = document.getElementById("overlay");
+  const arrowsGroup = document.getElementById("arrowsGroup");
+  const drawingArrow = document.getElementById("drawingArrow");
+  const statusLabel = document.getElementById("statusLabel");
+  const fenLabel = document.getElementById("fenLabel");
+  const cerafText = document.getElementById("cerafText");
+  const moveList = document.getElementById("moveList");
+  const depthValue = document.getElementById("depthValue");
+  const nodesValue = document.getElementById("nodesValue");
+  const npsValue = document.getElementById("npsValue");
+  const scoreValue = document.getElementById("scoreValue");
+  const evalFill = document.getElementById("evalFill");
+  const promotionModal = document.getElementById("promotionModal");
+  const promotionChoices = document.getElementById("promotionChoices");
 
-    let pyodideReady = false;
-    let selectedSquare = null;
-    let isDragging = false;
-    let dragPieceEl = null;
-    let rightClickStartSq = null;
+  const newGameBtn = document.getElementById("newGameBtn");
+  const flipBtn = document.getElementById("flipBtn");
+  const undoBtn = document.getElementById("undoBtn");
 
-    // --- BOARD RENDERING ---
-    function renderBoard() {
-        boardEl.innerHTML = "";
-        const board = game.board();
-        
-        for (let r = 0; r < 8; r++) {
-            for (let c = 0; c < 8; c++) {
-                const squareName = String.fromCharCode(97 + c) + (8 - r);
-                const sqEl = document.createElement("div");
-                sqEl.classList.add("square", (r + c) % 2 === 0 ? "light" : "dark");
-                sqEl.dataset.sq = squareName;
+  let game = new Chess();
+  let pyodideReady = false;
+  let thinking = false;
+  let searchToken = 0;
+  let selectedSquare = null;
+  let legalTargets = [];
+  let lastMove = null;
+  let boardFlipped = false;
+  let isDragging = false;
+  let dragPiece = null;
+  let dragFrom = null;
+  let pendingPromotion = null;
+  let rightClickStart = null;
 
-                if (selectedSquare === squareName) sqEl.classList.add("highlight");
+  function squareToCoords(square) {
+    const file = square.charCodeAt(0) - 97;
+    const rank = parseInt(square[1], 10) - 1;
+    return { file, rank };
+  }
 
-                const piece = board[r][c];
-                if (piece) {
-                    const pieceEl = document.createElement("div");
-                    pieceEl.classList.add("piece", piece.color === 'w' ? "white" : "black");
-                    pieceEl.innerText = unicodePieces[piece.color === 'w' ? piece.type.toUpperCase() : piece.type];
-                    sqEl.appendChild(pieceEl);
-                }
+  function coordsToSquare(file, rank) {
+    return String.fromCharCode(97 + file) + (rank + 1);
+  }
 
-                // Event Listeners for Click, Drag, and Arrows
-                sqEl.addEventListener("mousedown", handleMouseDown);
-                sqEl.addEventListener("mouseup", handleMouseUp);
-                sqEl.addEventListener("contextmenu", (e) => e.preventDefault());
-                
-                boardEl.appendChild(sqEl);
-            }
+  function displaySquare(file, rank) {
+    if (!boardFlipped) return coordsToSquare(file, 7 - rank);
+    return coordsToSquare(7 - file, rank);
+  }
+
+  function boardCoordsFromClient(x, y) {
+    const rect = boardEl.getBoundingClientRect();
+    const size = rect.width / 8;
+    let file = Math.floor((x - rect.left) / size);
+    let rankFromTop = Math.floor((y - rect.top) / size);
+    if (file < 0 || file > 7 || rankFromTop < 0 || rankFromTop > 7) return null;
+
+    let fileBoard, rankBoard;
+    if (!boardFlipped) {
+      fileBoard = file;
+      rankBoard = 7 - rankFromTop;
+    } else {
+      fileBoard = 7 - file;
+      rankBoard = rankFromTop;
+    }
+    return coordsToSquare(fileBoard, rankBoard);
+  }
+
+  function squareCenter(square) {
+    const rect = boardEl.getBoundingClientRect();
+    const { file, rank } = squareToCoords(square);
+    const size = rect.width / 8;
+    let x, y;
+
+    if (!boardFlipped) {
+      x = file * size + size / 2;
+      y = (7 - rank) * size + size / 2;
+    } else {
+      x = (7 - file) * size + size / 2;
+      y = rank * size + size / 2;
+    }
+    return { x, y };
+  }
+
+  function pieceToken(piece) {
+    const isWhite = piece.color === "w";
+    const glyph = PIECE_SYMBOL[piece.type];
+    const fillClass = isWhite ? "glyph white" : "glyph black";
+    return `
+      <div class="piece ${isWhite ? "white" : "black"}" data-piece="${piece.color}${piece.type}">
+        <svg viewBox="0 0 100 100" aria-hidden="true">
+          <circle class="shadow" cx="50" cy="54" r="30"></circle>
+          <circle cx="50" cy="50" r="30" fill="${isWhite ? "#f5f8ff" : "#202936"}" stroke="${isWhite ? "rgba(35,40,48,.72)" : "rgba(255,255,255,.16)"}" stroke-width="3"></circle>
+          <text x="50" y="53" class="${fillClass}">${glyph}</text>
+        </svg>
+      </div>`;
+  }
+
+  function getBoardMatrix() {
+    return game.board();
+  }
+
+  function movesFrom(square) {
+    return game.moves({ square, verbose: true });
+  }
+
+  function isMoveLegal(from, to, promotion) {
+    const move = { from, to };
+    if (promotion) move.promotion = promotion;
+    return game.move(move);
+  }
+
+  function clearSelection() {
+    selectedSquare = null;
+    legalTargets = [];
+  }
+
+  function setStatus(text, tone) {
+    statusLabel.textContent = text;
+    statusLabel.style.color = tone || "var(--text)";
+  }
+
+  function setCeraf(text) {
+    cerafText.textContent = text;
+  }
+
+  function pieceOn(square) {
+    return game.get(square);
+  }
+
+  function moveEntryText(history, idx) {
+    return history[idx] || "";
+  }
+
+  function renderMoveList() {
+    const history = game.history({ verbose: false });
+    const rows = [];
+    for (let i = 0; i < history.length; i += 2) {
+      rows.push(`
+        <div class="move-row">
+          <div class="num">${Math.floor(i / 2) + 1}.</div>
+          <div class="w">${history[i] || ""}</div>
+          <div class="b">${history[i + 1] || ""}</div>
+        </div>
+      `);
+    }
+    moveList.innerHTML = rows.join("") || `<div style="color:var(--muted);">No moves yet.</div>`;
+  }
+
+  function updateStats(info) {
+    if (!info) return;
+    depthValue.textContent = info.depth ?? 0;
+    nodesValue.textContent = (info.nodes ?? 0).toLocaleString();
+    npsValue.textContent = (info.nps ?? 0).toLocaleString();
+    scoreValue.textContent = typeof info.score === "number" ? info.score : 0;
+
+    const score = Math.max(-1000, Math.min(1000, info.score || 0));
+    const percent = 50 + (score / 1000) * 45;
+    evalFill.style.height = `${Math.max(5, Math.min(95, percent))}%`;
+  }
+
+  function renderArrows() {
+    arrowsGroup.innerHTML = "";
+  }
+
+  function renderBoard() {
+    const matrix = getBoardMatrix();
+    const last = lastMove || {};
+    const history = game.history({ verbose: true });
+    const orientationSquares = [];
+
+    boardEl.innerHTML = "";
+
+    for (let rank = 7; rank >= 0; rank--) {
+      for (let file = 0; file < 8; file++) {
+        const square = displaySquare(file, rank);
+        orientationSquares.push(square);
+        const dark = (file + rank) % 2 === 1;
+        const sq = document.createElement("button");
+        sq.className = `sq ${dark ? "dark" : "light"}`;
+        sq.type = "button";
+        sq.dataset.square = square;
+
+        if (square === selectedSquare) sq.classList.add("selected");
+        if (square === last.from || square === last.to) sq.classList.add("last");
+        if (legalTargets.some(t => t.square === square)) {
+          sq.classList.add(legalTargets.find(t => t.square === square).capture ? "capture" : "move");
         }
+
+        const piece = pieceOn(square);
+        if (piece) {
+          const pieceEl = document.createElement("div");
+          pieceEl.innerHTML = pieceToken(piece);
+          sq.appendChild(pieceEl.firstElementChild);
+        }
+
+        sq.addEventListener("mousedown", onSquareDown);
+        sq.addEventListener("mouseup", onSquareUp);
+        sq.addEventListener("contextmenu", e => e.preventDefault());
+        boardEl.appendChild(sq);
+      }
     }
 
-    // --- DRAG, DROP, CLICK & ARROWS LOGIC ---
-    function handleMouseDown(e) {
-        if (!pyodideReady || game.game_over()) return;
-        
-        const targetSq = e.currentTarget.dataset.sq;
+    fenLabel.textContent = game.fen();
+    renderMoveList();
+    updateEnginePanel();
+  }
 
-        // Right Click: Start drawing arrow
-        if (e.button === 2) {
-            rightClickStartSq = targetSq;
-            const rect = e.currentTarget.getBoundingClientRect();
-            const boardRect = boardEl.getBoundingClientRect();
-            const startX = rect.left - boardRect.left + 36;
-            const startY = rect.top - boardRect.top + 36;
-            
-            drawingArrow.setAttribute("x1", startX);
-            drawingArrow.setAttribute("y1", startY);
-            drawingArrow.setAttribute("x2", startX);
-            drawingArrow.setAttribute("y2", startY);
-            drawingArrow.style.display = "block";
-            return;
+  function updateEnginePanel() {
+    if (window.pyodide && pyodideReady) {
+      try {
+        const info = window.pyodide.globals.get("engine_info");
+        if (info) {
+          const json = info.toJs ? info.toJs() : info;
+          updateStats(json);
         }
-
-        // Left Click: Clear arrows
-        arrowsGroup.innerHTML = ""; 
-
-        // Handle Click-to-Move or Start Drag
-        if (selectedSquare) {
-            const moveResult = attemptMove(selectedSquare, targetSq);
-            if (moveResult) {
-                selectedSquare = null;
-                return;
-            }
-        }
-
-        const piece = game.get(targetSq);
-        if (piece && piece.color === 'w') {
-            selectedSquare = targetSq;
-            isDragging = true;
-            
-            // Create drag phantom
-            dragPieceEl = e.currentTarget.querySelector('.piece').cloneNode(true);
-            dragPieceEl.classList.add('dragging');
-            document.body.appendChild(dragPieceEl);
-            movePhantom(e);
-            renderBoard(); // Re-render to highlight selected
-        } else {
-            selectedSquare = null;
-            renderBoard();
-        }
+      } catch {}
     }
+  }
 
-    document.addEventListener("mousemove", (e) => {
-        if (isDragging && dragPieceEl) movePhantom(e);
-        
-        // Update arrow drawing
-        if (rightClickStartSq) {
-            const boardRect = boardEl.getBoundingClientRect();
-            drawingArrow.setAttribute("x2", e.clientX - boardRect.left);
-            drawingArrow.setAttribute("y2", e.clientY - boardRect.top);
-        }
+  function showPromotion(from, to) {
+    pendingPromotion = { from, to };
+    promotionChoices.innerHTML = "";
+    const options = [
+      ["q", "♛"],
+      ["r", "♜"],
+      ["b", "♝"],
+      ["n", "♞"],
+    ];
+    options.forEach(([promo, glyph]) => {
+      const b = document.createElement("button");
+      b.className = "promo-btn";
+      b.type = "button";
+      b.textContent = glyph;
+      b.addEventListener("click", () => {
+        promotionModal.classList.remove("show");
+        const move = { from, to, promotion: promo };
+        commitMove(move);
+      });
+      promotionChoices.appendChild(b);
     });
+    promotionModal.classList.add("show");
+  }
 
-    function handleMouseUp(e) {
-        // Right Click Release: Finalize arrow
-        if (e.button === 2 && rightClickStartSq) {
-            const endSq = e.currentTarget.dataset.sq;
-            if (endSq && endSq !== rightClickStartSq) {
-                const newArrow = drawingArrow.cloneNode(true);
-                arrowsGroup.appendChild(newArrow);
-            }
-            drawingArrow.style.display = "none";
-            rightClickStartSq = null;
-            return;
-        }
+  function closePromotion() {
+    promotionModal.classList.remove("show");
+    pendingPromotion = null;
+  }
 
-        // Left Click Release (Drop)
-        if (isDragging) {
-            isDragging = false;
-            if (dragPieceEl) { document.body.removeChild(dragPieceEl); dragPieceEl = null; }
-            
-            const elements = document.elementsFromPoint(e.clientX, e.clientY);
-            const targetEl = elements.find(el => el.classList.contains('square'));
-            
-            if (targetEl && targetEl.dataset.sq !== selectedSquare) {
-                attemptMove(selectedSquare, targetEl.dataset.sq);
-                selectedSquare = null;
-            }
-            renderBoard();
-        }
+  function commitMove(move) {
+    const result = game.move(move);
+    if (!result) return false;
+
+    lastMove = { from: result.from, to: result.to };
+    clearSelection();
+    thinking = false;
+    searchToken++;
+    setCeraf(`"Hmm… ${result.san}. Let me respond."`);
+    setStatus("CERAF thinking…", "var(--warn)");
+    if (game.game_over()) {
+      finishGameAfterMove();
+      renderBoard();
+      return true;
     }
+    renderBoard();
+    setTimeout(runEngineTurn, 40);
+    return true;
+  }
 
-    function movePhantom(e) {
-        dragPieceEl.style.left = `${e.clientX - 36}px`;
-        dragPieceEl.style.top = `${e.clientY - 36}px`;
-    }
-
-    function attemptMove(from, to) {
-        // Handle Auto-Queen promotion
-        const move = { from: from, to: to, promotion: 'q' };
-        const result = game.move(move);
-        
-        if (result) {
-            logMove(result.san, true);
-            cerafText.innerText = '"Hmm, let\'s try this."'; // CERAF Dialogue[cite: 1]
-            renderBoard();
-            
-            if (!checkGameOver()) {
-                statusLabel.innerText = "CERAF is calculating...";
-                statusLabel.style.color = "#FFC107";
-                setTimeout(triggerPythonAI, 50);
-            }
-            return true;
-        }
-        return false;
-    }
-
-    function logMove(san, isWhite) {
-        const p = document.createElement("div");
-        p.innerText = isWhite ? `${Math.ceil(game.history().length/2)}. ${san}` : `   ... ${san}`;
-        logContainer.appendChild(p);
-        logContainer.scrollTop = logContainer.scrollHeight;
-    }
-
-   function checkGameOver() {
-        if (game.game_over()) {
-            if (game.in_checkmate()) {
-                const cerafWon = game.turn() === 'w'; // If it's White's turn on checkmate, Black (CERAF) lost
-                statusLabel.innerText = cerafWon ? "CERAF WINS" : "YOU WIN";
-                statusLabel.style.color = cerafWon ? "#ef5350" : "#00E676";
-                cerafText.innerText = cerafWon ? '"Checkmate! hehehe."' : '"I yield! You are truly a master."';
-                
-                // --- PUNISH BAD MOVE ---
-               if (!cerafWon) {
-    const finalFen = game.fen();
-    pyodide.runPython(`
-        board = chess.Board("${finalFen}")
-        ceraf_brain.punish_position(board.epd())
-    `);
-    cerafText.innerText = '"I will remember this mistake..."';
-}
-            } else {
-                statusLabel.innerText = "DRAW";
-                statusLabel.style.color = "#aaaaaa";
-            }
-
-            // --- SAVE MEMORY TO BROWSER ---
-            const newBrainJSON = pyodide.runPython(`ceraf_brain.export_memory()`);
-            localStorage.setItem('ceraf_memory', newBrainJSON);
-            console.log("Memory saved to localStorage.");
-
-            return true;
-        }
-        return false;
-    }
-
-    function resetGame() {
-        game.reset();
-        selectedSquare = null;
-        arrowsGroup.innerHTML = "";
-        logContainer.innerHTML = "";
-        statusLabel.innerText = "Your Turn (White)";
-        statusLabel.style.color = "#00E676";
-        cerafText.innerText = '"CERAF online! Let\'s play a beautiful game."'; //[cite: 1]
-        renderBoard();
-    }
-
-// --- PYODIDE (PYTHON BACKEND) INTEGRATION ---
-    async function initPyodide() {
-        cerafText.innerText = '"Waking up... Loading Python environment..."';
-        
-        window.pyodide = await loadPyodide();
-        await pyodide.loadPackage("micropip");
-        const micropip = pyodide.pyimport("micropip");
-        await micropip.install("chess"); 
-
-        cerafText.innerText = '"Fetching engine_core.py from source..."';
-
+  function finishGameAfterMove() {
+    if (game.in_checkmate()) {
+      const side = game.turn() === "w" ? "Black" : "White";
+      setStatus(`${side} wins by checkmate`, "var(--bad)");
+      setCeraf(game.turn() === "w"
+        ? `"Checkmate. I accept the loss."`
+        : `"Checkmate. I found the finish."`);
+      if (game.turn() === "w" && window.pyodide && pyodideReady) {
         try {
-            // 1. Fetch your actual engine code from the src/ directory
-            const response = await fetch('src/engine_core.py', { cache: "no-store" });
-            if (!response.ok) throw new Error("Could not find src/engine_core.py");
-            const engineCode = await response.text();
+          window.pyodide.runPython(`
+board = chess.Board("${game.fen()}")
+ceraf_brain.punish_position(board.epd())
+`);
+        } catch {}
+      }
+    } else if (game.in_draw()) {
+      setStatus("Draw", "var(--muted)");
+      setCeraf(`"A balanced ending."`);
+    } else {
+      setStatus("Game over", "var(--muted)");
+    }
+    saveBrain();
+  }
 
-            // 2. Write the file into Pyodide's virtual file system
-            pyodide.FS.writeFile('/home/pyodide/engine_core.py', engineCode);
+  function saveBrain() {
+    if (!window.pyodide || !pyodideReady) return;
+    try {
+      const json = window.pyodide.runPython("ceraf_brain.export_memory()");
+      localStorage.setItem("ceraf_memory", json);
+    } catch {}
+  }
 
-          
-           // 3. Set up the Python Bridge with a REAL memory brain
-            await pyodide.runPythonAsync(`
-                import sys
-                import json
-                import chess
-                sys.path.append('/home/pyodide')
-                
-                from engine_core import CERAFEngine
-                
-                class WebBrain:
+  function legalMovesFor(square) {
+    return game.moves({ square, verbose: true }).map(m => ({
+      square: m.to,
+      capture: !!m.captured || !!m.flags?.includes?.("e") || m.flags === "e" || m.flags === "c" || m.flags === "ec",
+      promotion: m.promotion,
+    }));
+  }
+
+  function onSquareDown(e) {
+    if (!pyodideReady || game.game_over()) return;
+    const square = e.currentTarget.dataset.square;
+
+    if (e.button === 2) {
+      rightClickStart = square;
+      const start = squareCenter(square);
+      drawingArrow.setAttribute("x1", start.x);
+      drawingArrow.setAttribute("y1", start.y);
+      drawingArrow.setAttribute("x2", start.x);
+      drawingArrow.setAttribute("y2", start.y);
+      drawingArrow.style.display = "block";
+      return;
+    }
+
+    const piece = game.get(square);
+    if (selectedSquare && square !== selectedSquare) {
+      const legal = game.moves({ square: selectedSquare, verbose: true });
+      const targetMove = legal.find(m => m.to === square);
+      if (targetMove) {
+        if (targetMove.promotion) {
+          showPromotion(targetMove.from, targetMove.to);
+        } else {
+          commitMove({ from: targetMove.from, to: targetMove.to });
+        }
+        return;
+      }
+    }
+
+    if (piece && piece.color === "w" && game.turn() === "w") {
+      selectedSquare = square;
+      legalTargets = legalMovesFor(square);
+      if (e.currentTarget.firstElementChild) {
+        dragFrom = square;
+        isDragging = true;
+        dragPiece = e.currentTarget.querySelector(".piece").cloneNode(true);
+        dragPiece.classList.add("dragging");
+        document.body.appendChild(dragPiece);
+        moveDragGhost(e);
+      }
+      renderBoard();
+    } else {
+      clearSelection();
+      renderBoard();
+    }
+  }
+
+  function moveDragGhost(e) {
+    if (!dragPiece) return;
+    dragPiece.style.left = `${e.clientX - 48}px`;
+    dragPiece.style.top = `${e.clientY - 48}px`;
+  }
+
+  function onSquareUp(e) {
+    const square = e.currentTarget.dataset.square;
+
+    if (e.button === 2 && rightClickStart) {
+      const end = square;
+      if (end !== rightClickStart) {
+        const start = squareCenter(rightClickStart);
+        const finish = squareCenter(end);
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        line.setAttribute("x1", start.x);
+        line.setAttribute("y1", start.y);
+        line.setAttribute("x2", finish.x);
+        line.setAttribute("y2", finish.y);
+        line.setAttribute("class", "arrow-line");
+        line.setAttribute("marker-end", "url(#arrowhead)");
+        arrowsGroup.appendChild(line);
+      }
+      drawingArrow.style.display = "none";
+      rightClickStart = null;
+      return;
+    }
+
+    if (!isDragging || !dragFrom) return;
+    isDragging = false;
+    if (dragPiece && dragPiece.parentNode) dragPiece.parentNode.removeChild(dragPiece);
+    dragPiece = null;
+
+    const targetSquare = boardCoordsFromClient(e.clientX, e.clientY);
+    if (!targetSquare) {
+      clearSelection();
+      renderBoard();
+      return;
+    }
+
+    const legal = game.moves({ square: dragFrom, verbose: true });
+    const mv = legal.find(m => m.to === targetSquare);
+    if (mv) {
+      if (mv.promotion) {
+        showPromotion(mv.from, mv.to);
+      } else {
+        commitMove({ from: mv.from, to: mv.to });
+      }
+    }
+    clearSelection();
+    renderBoard();
+  }
+
+  document.addEventListener("mousemove", (e) => {
+    if (isDragging) moveDragGhost(e);
+    if (rightClickStart) {
+      const rect = boardEl.getBoundingClientRect();
+      drawingArrow.setAttribute("x2", e.clientX - rect.left);
+      drawingArrow.setAttribute("y2", e.clientY - rect.top);
+    }
+  });
+
+  document.addEventListener("mouseup", () => {
+    if (isDragging && dragPiece && dragPiece.parentNode) {
+      dragPiece.parentNode.removeChild(dragPiece);
+    }
+    dragPiece = null;
+    isDragging = false;
+    dragFrom = null;
+  });
+
+  async function initPyodide() {
+    setStatus("Loading Pyodide…", "var(--warn)");
+    setCeraf(`"Waking up… loading Python."`);
+
+    window.pyodide = await loadPyodide();
+    await pyodide.loadPackage("micropip");
+    const micropip = pyodide.pyimport("micropip");
+    await micropip.install("chess");
+
+    const response = await fetch("./engine_core.py", { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error("engine_core.py not found next to index.html");
+    }
+    const engineCode = await response.text();
+    pyodide.FS.writeFile("/home/pyodide/engine_core.py", engineCode);
+
+    await pyodide.runPythonAsync(`
+import sys, json, chess
+sys.path.append("/home/pyodide")
+from engine_core import CERAFEngine
+
+class WebBrain:
     def __init__(self):
         self.memory = {}
 
     def get_multiplier(self, board_epd):
-        # The key is now a stable EPD string
-        return self.memory.get(board_epd, 1.0)
+        return float(self.memory.get(board_epd, 1.0))
 
     def punish_position(self, board_epd):
-        current_weight = self.get_multiplier(board_epd)
-        self.memory[board_epd] = max(0.1, current_weight - 0.2)
+        current = float(self.memory.get(board_epd, 1.0))
+        self.memory[board_epd] = max(0.3, current - 0.1)
 
     def load_memory(self, json_string):
-        if json_string:
-            try:
-                self.memory = json.loads(json_string)
-            except:
-                self.memory = {}
+        try:
+            self.memory = json.loads(json_string) if json_string else {}
+        except Exception:
+            self.memory = {}
 
     def export_memory(self):
         return json.dumps(self.memory)
 
-                ceraf_brain = WebBrain()
-                engine = CERAFEngine(brain=ceraf_brain)
+ceraf_brain = WebBrain()
+engine = CERAFEngine(brain=ceraf_brain)
+engine_info = {"depth": 0, "nodes": 0, "nps": 0, "score": 0, "time_ms": 0, "pv": []}
 
-                def get_best_move(fen_string):
-                    board = chess.Board(fen_string)
-                    best_move = engine.search(board, max_time=1.5, max_depth=10)
-                    
-                    if best_move:
-                        return best_move.uci() if hasattr(best_move, 'uci') else str(best_move)
-                    return None
-            `);
-            // Load saved brain data from the browser and give it to Python
-            const savedMemory = localStorage.getItem('ceraf_memory') || '{}';
-            await pyodide.runPythonAsync(`ceraf_brain.load_memory('${savedMemory}')`);
-            
-            console.log("CERAF Memory Loaded!");
-            
-            pyodideReady = true;
-            resetGame();
-            
-        } catch (error) {
-            console.error("Engine Load Error:", error);
-            cerafText.innerText = '"Error loading engine_core.py! Check the console."';
-            statusLabel.innerText = "Engine Failed to Load";
-            statusLabel.style.color = "#ef5350";
-        }
-    }
+def get_best_move(fen_string):
+    global engine_info
+    board = chess.Board(fen_string)
+    best_move = engine.search(board, max_time=1.2, max_depth=8)
+    engine_info = engine.last_info or engine_info
+    return best_move.uci() if best_move else None
+    `);
 
- async function triggerPythonAI() {
-        try {
-            const fen = game.fen();
-            // Call the Python logic
-            const bestMoveUCI = await pyodide.runPythonAsync(`get_best_move("${fen}")`);
-            
-            if (bestMoveUCI) {
-                const result = game.move(bestMoveUCI, {sloppy: true});
-                logMove(result.san, false);
-                cerafText.innerText = '"Your turn!."'; 
-                statusLabel.innerText = "Your Turn (White)";
-                statusLabel.style.color = "#00E676";
-                renderBoard();
-                checkGameOver();
-            }
-        } catch (error) {
-            console.error("AI Error:", error);
-            statusLabel.innerText = "Engine Crashed!";
-            statusLabel.style.color = "#ef5350";
-            cerafText.innerText = '"Oops... my brain just threw an exception. Check the console!"';
-        }
-    }
+    const savedMemory = localStorage.getItem("ceraf_memory") || "{}";
+    pyodide.globals.set("saved_memory_json", savedMemory);
+    await pyodide.runPythonAsync(`ceraf_brain.load_memory(saved_memory_json)`);
 
-    // Start App
+    pyodideReady = true;
+    setStatus("Your turn", "var(--good)");
+    setCeraf(`"CERAF online. Let’s play a clean game."`);
     renderBoard();
-    initPyodide();
+  }
+
+  async function runEngineTurn() {
+    if (!pyodideReady || game.game_over()) return;
+    if (thinking) return;
+
+    thinking = true;
+    const token = ++searchToken;
+    setStatus("CERAF thinking…", "var(--warn)");
+
+    try {
+      const fen = game.fen();
+      pyodide.globals.set("fen_input", fen);
+      const bestMoveUCI = await pyodide.runPythonAsync(`get_best_move(fen_input)`);
+
+      if (token !== searchToken) return;
+      if (!bestMoveUCI) {
+        thinking = false;
+        setStatus("Your turn", "var(--good)");
+        return;
+      }
+
+      const result = game.move(bestMoveUCI, { sloppy: true });
+      if (result) {
+        lastMove = { from: result.from, to: result.to };
+        setCeraf(`"Your move: ${result.san}. Back to you."`);
+        renderBoard();
+        if (game.game_over()) {
+          finishGameAfterMove();
+        } else {
+          setStatus("Your turn", "var(--good)");
+          updateEnginePanel();
+        }
+      }
+      thinking = false;
+    } catch (err) {
+      console.error(err);
+      thinking = false;
+      setStatus("Engine crashed", "var(--bad)");
+      setCeraf(`"Oops. The engine hit an error. Check the console."`);
+    }
+  }
+
+  function newGame() {
+    game = new Chess();
+    selectedSquare = null;
+    legalTargets = [];
+    lastMove = null;
+    thinking = false;
+    searchToken++;
+    arrowsGroup.innerHTML = "";
+    moveList.innerHTML = "";
+    setStatus("Your turn", "var(--good)");
+    setCeraf(`"CERAF reset. Your move."`);
+    renderBoard();
+  }
+
+  function undoMove() {
+    if (thinking) return;
+    const first = game.undo();
+    const second = game.undo();
+    if (!first) return;
+    lastMove = null;
+    if (second) lastMove = { from: second.from, to: second.to };
+    clearSelection();
+    renderBoard();
+    setStatus("Your turn", "var(--good)");
+    setCeraf(`"Undo accepted."`);
+  }
+
+  newGameBtn.addEventListener("click", newGame);
+  flipBtn.addEventListener("click", () => {
+    boardFlipped = !boardFlipped;
+    renderBoard();
+  });
+  undoBtn.addEventListener("click", undoMove);
+
+  promotionModal.addEventListener("click", (e) => {
+    if (e.target === promotionModal) closePromotion();
+  });
+
+  renderBoard();
+  initPyodide().catch(err => {
+    console.error(err);
+    setStatus("Engine failed to load", "var(--bad)");
+    setCeraf(`"Failed to load engine_core.py. Open the console for details."`);
+  });
+})();
 </script>
 </body>
 </html>
