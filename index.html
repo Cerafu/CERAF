@@ -314,16 +314,33 @@
         logContainer.scrollTop = logContainer.scrollHeight;
     }
 
-    function checkGameOver() {
+   function checkGameOver() {
         if (game.game_over()) {
             if (game.in_checkmate()) {
-                statusLabel.innerText = game.turn() === 'w' ? "CERAF WINS" : "YOU WIN";
-                statusLabel.style.color = game.turn() === 'w' ? "#ef5350" : "#00E676";
-                cerafText.innerText = game.turn() === 'w' ? '"Checkmate! hehehe."' : '"I yield! You are truly a master."'; //[cite: 1]
+                const cerafWon = game.turn() === 'w'; // If it's White's turn on checkmate, Black (CERAF) lost
+                statusLabel.innerText = cerafWon ? "CERAF WINS" : "YOU WIN";
+                statusLabel.style.color = cerafWon ? "#ef5350" : "#00E676";
+                cerafText.innerText = cerafWon ? '"Checkmate! hehehe."' : '"I yield! You are truly a master."';
+                
+                // --- PUNISH BAD MOVE ---
+                if (!cerafWon) {
+                    const finalFen = game.fen();
+                    pyodide.runPython(`
+                        board = chess.Board("${finalFen}")
+                        ceraf_brain.punish_position(hash(board.epd()))
+                    `);
+                    cerafText.innerText = '"I will remember this mistake..."';
+                }
             } else {
                 statusLabel.innerText = "DRAW";
                 statusLabel.style.color = "#aaaaaa";
             }
+
+            // --- SAVE MEMORY TO BROWSER ---
+            const newBrainJSON = pyodide.runPython(`ceraf_brain.export_memory()`);
+            localStorage.setItem('ceraf_memory', newBrainJSON);
+            console.log("Memory saved to localStorage.");
+
             return true;
         }
         return false;
@@ -360,39 +377,55 @@
             // 2. Write the file into Pyodide's virtual file system
             pyodide.FS.writeFile('/home/pyodide/engine_core.py', engineCode);
 
-            // 3. Set up the Python Bridge to run your specific engine
+          
+           // 3. Set up the Python Bridge with a REAL memory brain
             await pyodide.runPythonAsync(`
                 import sys
+                import json
                 import chess
                 sys.path.append('/home/pyodide')
                 
-                # Import the real engine you wrote!
                 from engine_core import CERAFEngine
                 
-                # Create a simple mock brain for the web version 
-                # (since saving JSON files directly to the user's hard drive isn't possible in a browser)
                 class WebBrain:
+                    def __init__(self):
+                        self.memory = {}
+
                     def get_multiplier(self, board_hash):
-                        return 1.0
+                        # If we've seen this position and assigned a weight, use it. Otherwise, 1.0.
+                        return self.memory.get(str(board_hash), 1.0)
+
+                    def punish_position(self, board_hash):
+                        # Reduce the multiplier so the engine avoids this position next time
+                        current_weight = self.get_multiplier(board_hash)
+                        self.memory[str(board_hash)] = max(0.1, current_weight - 0.2)
+
+                    def load_memory(self, json_string):
+                        if json_string:
+                            try:
+                                self.memory = json.loads(json_string)
+                            except:
+                                self.memory = {}
+
+                    def export_memory(self):
+                        return json.dumps(self.memory)
 
                 ceraf_brain = WebBrain()
-                
-                # Initialize your powerful championship-grade engine
                 engine = CERAFEngine(brain=ceraf_brain)
 
                 def get_best_move(fen_string):
                     board = chess.Board(fen_string)
-                    
-                    # Run your actual search algorithm (capped at 1.5 seconds so the browser doesn't freeze)
-                    # NOTE: If your engine_core.py expects custom board methods, 
-                    # you may need to wrap python-chess here.
                     best_move = engine.search(board, max_time=1.5, max_depth=10)
                     
                     if best_move:
-                        # Ensure the move is returned as a UCI string (e.g., 'e2e4') for the Javascript frontend
                         return best_move.uci() if hasattr(best_move, 'uci') else str(best_move)
                     return None
             `);
+            // Load saved brain data from the browser and give it to Python
+            const savedMemory = localStorage.getItem('ceraf_memory') || '{}';
+            await pyodide.runPythonAsync(`ceraf_brain.load_memory('${savedMemory}')`);
+            
+            console.log("CERAF Memory Loaded!");
             
             pyodideReady = true;
             resetGame();
