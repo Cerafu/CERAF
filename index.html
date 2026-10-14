@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#060908" />
+<meta name="description" content="CERAF — chess, calculation, and a personal chess-engine project. Watch CERAF on Lichess." />
+<title>CERAF — Chess. Calculation. Control.</title>
+<style>
+:root{--bg:#060908;--line:rgba(220,239,218,.14);--lb:rgba(198,255,116,.32);--text:#f0f2e9;--muted:#aab5a6;--acid:#c6ff74;--gold:#d6b878;--mono:ui-monospace,SFMono-Regular,Consolas,monospace;--sans:Inter,"Segoe UI",system-ui,-apple-system,sans-serif;--serif:Georgia,"Times New Roman",serif}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:76px}
+body{margin:0;background:radial-gradient(ellipse at 70% 10%,#10241a,#060908 60%);color:var(--text);font:16px/1.6 var(--sans);overflow-x:hidden}
+a{color:inherit;text-decoration:none}
+a:focus-visible,button:focus-visible{outline:2px solid var(--acid);outline-offset:3px}
+::selection{background:var(--acid);color:#0a0c08}
+#gl{position:fixed;inset:0;width:100%;height:100%;z-index:0;display:block}
+header,main,footer{position:relative;z-index:2}
+.wrap{width:min(1180px,calc(100% - 44px));margin-inline:auto}
+.mono{font:12px/1.5 var(--mono);letter-spacing:.08em;color:var(--acid)}
+.topbar{position:sticky;top:0;z-index:30;background:rgba(6,9,8,.72);backdrop-filter:blur(16px);border-bottom:1px solid var(--line)}
+.nav{height:70px;display:flex;align-items:center;justify-content:space-between;gap:24px}
+.brand{font-weight:800;letter-spacing:.24em;font-size:16px}.brand span{color:var(--acid)}
+.nav-links{display:flex;gap:clamp(18px,3vw,34px)}
+.nav-links a{color:#c3ccc0;font-size:14px;transition:color .2s}.nav-links a:hover{color:var(--acid)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 20px;border:1px solid var(--lb);border-radius:6px;color:var(--acid);background:rgba(198,255,116,.06);font-size:14px;font-weight:700;transition:background .2s,border-color .2s}
+.btn:hover{background:rgba(198,255,116,.14);border-color:var(--acid)}
+.btn.primary{background:var(--acid);color:#0a0d08;border-color:var(--acid)}.btn.primary:hover{background:#d9ffa4}
+.btn.quiet{color:var(--text);border-color:var(--line);background:rgba(255,255,255,.03)}
+.menu-toggle{display:none;width:44px;height:44px;border:1px solid var(--line);border-radius:6px;background:rgba(10,14,11,.9);color:var(--text);cursor:pointer;font-size:18px}
+.stage{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:90px 0}
+.col{max-width:540px;padding:26px 30px 26px 0;background:linear-gradient(90deg,rgba(5,8,6,.6),rgba(5,8,6,0));text-shadow:0 1px 14px rgba(0,0,0,.6)}
+h1{margin:18px 0;font-size:clamp(48px,6.6vw,92px);line-height:.93;letter-spacing:-.06em;font-weight:850}
+h1 .o{color:transparent;-webkit-text-stroke:1px rgba(240,242,233,.8)}h1 .a{color:var(--acid)}
+h2{margin:12px 0 0;font-size:clamp(34px,4.5vw,58px);line-height:1;letter-spacing:-.055em}
+h2 em,blockquote em{color:var(--acid);font-family:var(--serif);font-weight:400}
+.lede{margin:0;color:#c2cbbf;font-size:17px;line-height:1.75;max-width:470px}
+.acts{display:flex;flex-wrap:wrap;gap:12px;margin-top:28px}
+.foot{display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:30px;color:#93a090;font:13px var(--mono)}
+.metrics{background:rgba(6,9,8,.9);border-block:1px solid var(--line)}
+.mg{display:grid;grid-template-columns:repeat(4,1fr)}
+.m{padding:20px 24px;border-right:1px solid var(--line)}.m:first-child{padding-left:0}.m:last-child{border:0}
+.m .l{font:12px var(--mono);color:#8e9b8b;letter-spacing:.08em}.m .v{font-size:26px;font-weight:750;letter-spacing:-.04em}.m .v small{font-size:12px;font-weight:500;color:#8e9b8b}.m .s{font-size:13px;color:#8e9b8b}
+.live{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(280px,.8fr);gap:20px;padding:30px 0 100px}
+.card{background:rgba(8,12,10,.92);border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.5)}
+.ch{display:flex;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid var(--line);font-size:14px}.ch span{color:#93a090;font:12px var(--mono)}
+.fw{padding:12px}.fw iframe{display:block;width:100%;height:480px;border:0;border-radius:8px;background:#111713}
+.cap{display:flex;justify-content:space-between;gap:16px;padding:14px 20px;border-top:1px solid var(--line);color:#93a090;font-size:13px}.cap a{color:var(--acid);font-weight:650;white-space:nowrap}
+.side{display:flex;flex-direction:column;padding:34px;border:1px solid var(--lb);border-radius:12px;background:linear-gradient(150deg,rgba(198,255,116,.08),rgba(8,12,10,.94) 45%)}
+.side h3{margin:0 0 14px;font-size:clamp(28px,3vw,38px);letter-spacing:-.05em;line-height:1.05}.side p{margin:0;color:#b0bbac;font-size:15px}
+.chip{display:flex;align-items:center;gap:12px;margin:26px 0;padding:12px;border:1px solid var(--line);border-radius:8px}
+.av{width:42px;height:42px;border-radius:8px;display:grid;place-items:center;background:var(--acid);color:#0b1008;font-weight:900}
+.chip b{display:block;font-size:14px}.chip small{font:12px var(--mono);color:#8e9b8b}
+.side .btn{margin-top:auto}.sub{margin-top:12px;text-align:center;font-size:12px;color:#8e9b8b}
+.flist{list-style:none;margin:24px 0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:0 24px}
+.flist li{padding:12px 0;border-top:1px solid var(--line)}.flist b{display:block;font-size:15px}.flist small{color:#a0ac9c;font-size:13px}
+.engine p.t{color:#bac4b6;margin:20px 0 0;font-size:16px;line-height:1.8}
+blockquote{margin:20px 0;font-size:clamp(32px,4.6vw,62px);line-height:1.08;letter-spacing:-.055em;font-weight:680}
+.mind p{color:#b0bbac;max-width:440px;margin:0}
+.cta{display:flex;align-items:center;justify-content:space-between;gap:30px;margin-bottom:70px;padding:clamp(26px,5vw,50px);border:1px solid var(--lb);border-radius:14px;background:rgba(7,11,8,.9);backdrop-filter:blur(10px)}
+.cta h2{font-size:clamp(28px,4vw,46px)}.cta p{margin:12px 0 0;color:#b0bbac}
+.stage.end{justify-content:flex-end;padding-bottom:0}
+footer{background:rgba(6,9,8,.94);border-top:1px solid var(--line);padding:24px 0}
+.fi{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;color:#8e9b8b;font:12px var(--mono)}.fi strong{color:#c0cbbb}.fi a:hover{color:var(--acid)}.fi div:last-child{display:flex;gap:20px}
+#hud{position:fixed;z-index:5;left:50%;bottom:22px;transform:translate(-50%,10px);display:flex;gap:14px;align-items:center;padding:10px 18px;border:1px solid var(--lb);border-radius:8px;background:rgba(6,9,8,.85);font:12px var(--mono);color:#7d8a7a;opacity:0;pointer-events:none;transition:opacity .4s,transform .4s}
+#hud.show{opacity:1;transform:translate(-50%,0)}#hud i{font-style:normal}#hud .on{color:var(--acid)}#hud small{color:#8e9b8b}
+.js .reveal{opacity:0;transform:translateY(16px);transition:opacity .7s,transform .7s}.js .reveal.visible{opacity:1;transform:none}
+.no3d #gl,.no3d #hud{display:none}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition-duration:.01ms!important}.js .reveal{opacity:1;transform:none}}
+@media(max-width:900px){.live{grid-template-columns:1fr}.side{min-height:380px}}
+@media(max-width:650px){
+.wrap{width:calc(100% - 30px)}.nav{height:64px}.nav .btn{display:none}.menu-toggle{display:block}
+.nav-links{display:none;position:absolute;top:64px;left:15px;right:15px;flex-direction:column;gap:0;padding:10px;background:rgba(10,14,11,.97);border:1px solid var(--line);border-radius:10px}.nav-links.open{display:flex}
+.nav-links a{padding:14px 10px;border-bottom:1px solid var(--line)}.nav-links a:last-child{border:0}
+.stage{justify-content:flex-end;min-height:100svh;padding:70px 0 40px}
+.col{max-width:none;padding:44px 0 6px;background:linear-gradient(180deg,rgba(5,8,6,0),rgba(5,8,6,.9) 42px)}
+.acts{flex-direction:column}.acts .btn{width:100%}
+.mg{grid-template-columns:1fr 1fr}.m{padding:14px 12px;border-bottom:1px solid var(--line)}.m:nth-child(2){border-right:0}.m:first-child{padding-left:12px}
+.fw iframe{height:420px}.cap{flex-direction:column;gap:6px}.flist{grid-template-columns:1fr}
+.cta{flex-direction:column;align-items:stretch}#hud{width:calc(100% - 24px);justify-content:center;flex-wrap:wrap;gap:8px}#hud small{display:none}
+}
+</style>
+</head>
+<body>
+<canvas id="gl" aria-hidden="true"></canvas>
+<header class="topbar"><div class="wrap nav">
+<a class="brand" href="#home" aria-label="CERAF home">CER<span>A</span>F</a>
+<nav class="nav-links" id="navLinks" aria-label="Main navigation"><a href="#arena">Live arena</a><a href="#engine">Engine lab</a><a href="#mindset">The mindset</a><a href="#about">About CERAF</a></nav>
+<a class="btn" href="https://lichess.org/@/CERAF/tv" target="_blank" rel="noopener noreferrer">Watch CERAF ↗</a>
+<button class="menu-toggle" id="menuToggle" aria-label="Toggle navigation" aria-controls="navLinks" aria-expanded="false">☰</button>
+</div></header>
+<main>
+<section id="home"><div class="wrap stage"><div class="col">
+<div class="mono">Chess / Code / Calculation</div>
+<h1>READ THE<br><span class="o">POSITION.</span><br><span class="a">OWN THE GAME.</span></h1>
+<p class="lede">Welcome to CERAF — a corner of the chessboard where every move has a reason, every mistake becomes data, and curiosity never stops calculating.</p>
+<div class="acts"><a class="btn primary" href="https://lichess.org/@/CERAF/tv" target="_blank" rel="noopener noreferrer">Watch CERAF on Lichess ↗</a><a class="btn quiet" href="#engine">Explore the engine ↓</a></div>
+<div class="foot"><span>Lichess player</span><span>♞ Independent chess project</span><span>Est. in curiosity</span></div>
+<div class="foot"><span>Operating principle: ONE MOVE AHEAD.</span></div>
+</div></div></section>
+
+<div class="metrics" aria-label="CERAF profile snapshot"><div class="wrap mg">
+<div class="m"><div class="l">Lichess handle</div><div class="v">@CERAF</div><div class="s">The home square</div></div>
+<div class="m"><div class="l">Blitz rating</div><div class="v" id="blitzRating">— <small>syncing</small></div><div class="s" id="blitzSub">Public profile data</div></div>
+<div class="m"><div class="l">Rapid rating</div><div class="v" id="rapidRating">— <small>syncing</small></div><div class="s" id="rapidSub">Public profile data</div></div>
+<div class="m"><div class="l">Bullet rating</div><div class="v" id="bulletRating">— <small>syncing</small></div><div class="s" id="bulletSub">Public profile data</div></div>
+</div></div>
+
+<section id="arena">
+<div class="wrap stage"><div class="col">
+<div class="mono">The live board</div>
+<h2>Chess doesn't<br>stand <em>still.</em></h2>
+<p class="lede" style="margin-top:20px">Step into the arena. The official Lichess TV board below follows a live featured game; use the link beside it to jump straight to CERAF's own TV page.</p>
+<p class="foot">Position // 01 — the pieces on the board are a decorative sample position and a visual demonstration of a move, not a live game. Think before you move. Calculate · Commit.</p>
+</div></div>
+<div class="wrap live">
+<div class="card reveal"><div class="ch"><strong>Lichess TV // Live game viewer</strong><span>External feed</span></div>
+<div class="fw"><iframe title="Official Lichess TV live chess board" src="https://lichess.org/tv/frame?theme=green&amp;bg=dark" loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe></div>
+<div class="cap"><span>This is the general Lichess TV feed, not a claim that CERAF is currently playing.</span><a href="https://lichess.org/tv" target="_blank" rel="noopener noreferrer">Open full TV ↗</a></div></div>
+<aside class="side reveal"><h3>Your next move<br>starts here.</h3>
+<p>Want to see CERAF's own Lichess TV page? Open the profile destination directly. The page stays on Lichess, so its live-game and account features work as intended.</p>
+<div class="chip"><div class="av">CF</div><div><b>CERAF</b><small>LICHESS.ORG / PLAYER TV</small></div><span style="margin-left:auto;color:var(--acid);font-size:20px">♞</span></div>
+<a class="btn primary" href="https://lichess.org/@/CERAF/tv" target="_blank" rel="noopener noreferrer">Open CERAF TV ↗</a>
+<div class="sub">Opens in a new tab · Official Lichess destination</div></aside>
+</div></section>
+
+<section id="engine" class="engine"><div class="wrap stage" style="min-height:150vh"><div class="col">
+<div class="mono">Engine lab · CERAF ENGINE / RESEARCH BUILD</div>
+<h2>A little less guessing.<br><em>A lot more thinking.</em></h2>
+<p class="t">CERAF is also a personal chess-engine project: code, experiments, and the steady process of making a program understand a position a little better. It is a workbench for learning—not a claim of a particular rating or tournament result.</p>
+<ul class="flist">
+<li><b>Search</b><small>Look beyond the obvious move.</small></li><li><b>Evaluation</b><small>Turn a position into a useful score.</small></li>
+<li><b>Iteration</b><small>Test, inspect, improve, repeat.</small></li><li><b>Built to learn</b><small>Understand the code behind the move.</small></li></ul>
+<p class="mono">SEARCH → EVALUATE → REFINE · BUILD 001</p>
+<div class="acts"><a class="btn quiet" href="https://lichess.org/@/CERAF" target="_blank" rel="noopener noreferrer">Visit the CERAF profile ↗</a></div>
+</div></div></section>
+
+<section id="mindset" class="mind"><div class="wrap stage"><div class="col">
+<div class="mono">The mindset</div>
+<blockquote>“Every position has a story.<br><em>Calculate yours.</em>”</blockquote>
+<p>Play the position in front of you. Respect the opponent. Study the mistakes. Keep building. That's the whole idea.</p>
+</div></div></section>
+
+<section id="about"><div class="wrap stage end"><div class="cta">
+<div><div class="mono">Your move</div><h2>The board is waiting.<br>Make it count.</h2><p>Follow the games, explore the profile, and stay close to the next move.</p></div>
+<a class="btn primary" href="https://lichess.org/@/CERAF/tv" target="_blank" rel="noopener noreferrer">Enter CERAF TV ↗</a>
+</div></div></section>
+</main>
+<div id="hud" aria-hidden="true"><i id="h1">SEARCH</i>→<i id="h2">EVALUATE</i>→<i id="h3">REFINE</i><small>Conceptual visualization, not engine output</small></div>
+<footer><div class="wrap fi"><div><strong>CERAF</strong> · Chess / Code / Calculation</div><div>Made for the love of the game.</div><div><a href="https://lichess.org/@/CERAF" target="_blank" rel="noopener noreferrer">Lichess profile ↗</a><a href="#home">Back to top ↑</a></div></div></footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(()=>{'use strict';
+const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>[...r.querySelectorAll(s)];
+const RM=matchMedia('(prefers-reduced-motion: reduce)').matches,root=document.documentElement;
+root.classList.add('js');
+/* menu */
+const mt=$('#menuToggle'),nl=$('#navLinks');
+const setMenu=o=>{nl.classList.toggle('open',o);mt.setAttribute('aria-expanded',String(o));mt.textContent=o?'×':'☰'};
+mt.onclick=()=>setMenu(!nl.classList.contains('open'));
+$$('a',nl).forEach(a=>a.addEventListener('click',()=>setMenu(false)));
+addEventListener('keydown',e=>{if(e.key==='Escape')setMenu(false)});
+/* reveal */
+const rv=$$('.reveal');
+if('IntersectionObserver'in window&&!RM){const o=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('visible');o.unobserve(e.target)}}),{threshold:.08});rv.forEach(x=>o.observe(x))}else rv.forEach(x=>x.classList.add('visible'));
+/* public ratings, with graceful fallback */
+(async()=>{const tg={blitz:['blitzRating','blitzSub'],rapid:['rapidRating','rapidSub'],bullet:['bulletRating','bulletSub']};
+try{const r=await fetch('https://lichess.org/api/user/CERAF',{headers:{Accept:'application/json'}});if(!r.ok)throw 0;const d=await r.json(),pf=d.perfs||{};
+Object.entries(tg).forEach(([k,[a,b]])=>{const p=pf[k];if(p&&typeof p.rating==='number'){$('#'+a).textContent=Math.round(p.rating).toLocaleString();$('#'+b).textContent=(p.games||0).toLocaleString()+' rated games'}else{$('#'+a).textContent='—';$('#'+b).textContent='No public rating yet'}})}
+catch(_){Object.values(tg).forEach(([a,b])=>{$('#'+a).textContent='—';$('#'+b).textContent='Open profile for current stats'})}})();
+
+if(!window.THREE){root.classList.add('no3d');return}
+try{init3D()}catch(e){console.warn('3D disabled:',e);root.classList.add('no3d')}
+
+function init3D(){
+const T=THREE,cv=$('#gl'),small=innerWidth<760;
+const R=new T.WebGLRenderer({canvas:cv,antialias:devicePixelRatio<2,powerPreference:'high-performance'});
+let dpr=Math.min(devicePixelRatio||1,small?1.25:1.5);
+R.setPixelRatio(dpr);R.outputEncoding=T.sRGBEncoding;R.toneMapping=T.ACESFilmicToneMapping;R.toneMappingExposure=1.1;
+R.shadowMap.enabled=true;R.shadowMap.type=T.PCFSoftShadowMap;
+cv.addEventListener('webglcontextlost',e=>{e.preventDefault();root.classList.add('no3d')});
+const S=new T.Scene();S.background=new T.Color(0x050806);S.fog=new T.FogExp2(0x050806,.02);
+const cam=new T.PerspectiveCamera(40,1,.1,150),Y=new T.Vector3(0,1,0),X=new T.Vector3(1,0,0);
+const sm=(a,b,x)=>{x=Math.min(1,Math.max(0,(x-a)/(b-a)));return x*x*(3-2*x)},sat=x=>Math.min(1,Math.max(0,x));
+
+/* procedural studio environment for reflections */
+{const c=document.createElement('canvas');c.width=512;c.height=256;const g=c.getContext('2d');
+const gr=g.createLinearGradient(0,0,0,256);gr.addColorStop(0,'#0d1f17');gr.addColorStop(.55,'#050806');gr.addColorStop(1,'#020403');g.fillStyle=gr;g.fillRect(0,0,512,256);
+g.fillStyle='#fff3d8';g.fillRect(50,40,100,44);g.fillStyle='#8fffc0';g.fillRect(300,30,18,110);g.fillStyle='#c6ff74';g.fillRect(420,50,12,90);g.fillStyle='#d6a850';g.fillRect(200,60,40,20);
+const tx=new T.CanvasTexture(c);tx.mapping=T.EquirectangularReflectionMapping;tx.encoding=T.sRGBEncoding;
+const pm=new T.PMREMGenerator(R);S.environment=pm.fromEquirectangular(tx).texture;tx.dispose();pm.dispose()}
+
+/* materials */
+const M=(c,m,r,o)=>new T.MeshStandardMaterial(Object.assign({color:c,metalness:m,roughness:r},o));
+const mat={
+knight:new T.MeshPhysicalMaterial({color:0x1b2c23,metalness:.9,roughness:.3,clearcoat:.5,clearcoatRoughness:.35}),
+ped:M(0x121c17,.85,.34),brass:M(0xc09a52,1,.26),brassD:M(0x8a6f38,.9,.42),ivory:M(0xe8dfc4,.05,.38),dk:M(0x111b16,.75,.3),
+stone:M(0xd9d3bd,.05,.5),forest:M(0x2a4b34,.1,.55),frame:M(0x0e1813,.55,.42),
+lime:new T.MeshBasicMaterial({color:0xc6ff74}),eye:new T.MeshBasicMaterial({color:0xc6ff74})};
+
+/* ===== floor, columns ===== */
+{const fc=document.createElement('canvas');fc.width=fc.height=256;const g=fc.getContext('2d');g.fillStyle='#0a110d';g.fillRect(0,0,256,256);g.strokeStyle='rgba(120,200,140,.17)';g.lineWidth=2;g.strokeRect(0,0,256,256);
+const ft=new T.CanvasTexture(fc);ft.wrapS=ft.wrapT=T.RepeatWrapping;ft.repeat.set(30,30);ft.encoding=T.sRGBEncoding;ft.anisotropy=4;
+const fl=new T.Mesh(new T.CircleGeometry(60,48),M(0xffffff,.55,.42,{map:ft}));fl.rotation.x=-Math.PI/2;fl.receiveShadow=true;S.add(fl);
+const n=18,col=new T.InstancedMesh(new T.BoxGeometry(1.3,14,1.3),mat.dk,n*2),st=new T.InstancedMesh(new T.BoxGeometry(.07,12,.07),new T.MeshBasicMaterial({color:0x6fcf86}),n*2),d=new T.Object3D();
+for(let i=0;i<n;i++)for(let s=0;s<2;s++){const x=s?14:-14,z=16-i*5;d.position.set(x,7,z);d.updateMatrix();col.setMatrixAt(i*2+s,d.matrix);d.position.set(x+(s?-.7:.7),6.5,z);d.updateMatrix();st.setMatrixAt(i*2+s,d.matrix)}
+S.add(col,st)}
+
+/* ===== Object A: Sovereign Knight (lofted procedural surface) ===== */
+function knightGeo(){
+const s=new T.Shape();s.moveTo(-.9,0);s.lineTo(.9,0);
+s.bezierCurveTo(1,.55,.6,.9,.5,1.35);s.bezierCurveTo(.45,1.55,.75,1.7,1,1.78);
+s.bezierCurveTo(1.25,1.8,1.5,1.85,1.62,1.98);s.bezierCurveTo(1.7,2.1,1.65,2.25,1.55,2.32);
+s.bezierCurveTo(1.3,2.55,1,2.85,.82,3.2);s.lineTo(.78,3.55);s.lineTo(.55,3.28);
+s.bezierCurveTo(.2,3.2,-.1,2.9,-.35,2.5);s.bezierCurveTo(-.7,1.9,-.85,1,-.9,0);
+const P=s.getSpacedPoints(150);P.pop();const N=P.length,K=14,C=new T.Vector2(.3,1.5);
+const th=y=>.5*(1-sm(1.2,3.4,y))+.1,fz=t=>Math.pow(1-Math.pow(1-t,3),1/3);
+const pos=[],idx=[];
+for(let i=0;i<N;i++)pos.push(P[i].x,P[i].y,0);
+for(let k=1;k<K;k++)for(const sg of[1,-1])for(let i=0;i<N;i++){const t=Math.pow(k/K,1.8),x=P[i].x*(1-t)+C.x*t,y=P[i].y*(1-t)+C.y*t;pos.push(x,y,sg*th(y)*fz(t))}
+const cp=pos.length/3;pos.push(C.x,C.y,th(C.y),C.x,C.y,-th(C.y));
+const vid=(k,i,sg)=>k?N+((k-1)*2+(sg>0?0:1))*N+(i%N):i%N;
+for(const sg of[1,-1]){
+for(let k=0;k<K-1;k++)for(let i=0;i<N;i++){const a=vid(k,i,sg),b=vid(k,i+1,sg),c=vid(k+1,i+1,sg),d=vid(k+1,i,sg);if(sg>0)idx.push(a,b,c,a,c,d);else idx.push(a,c,b,a,d,c)}
+for(let i=0;i<N;i++){const a=vid(K-1,i,sg),b=vid(K-1,i+1,sg),c=cp+(sg>0?0:1);if(sg>0)idx.push(a,b,c);else idx.push(a,c,b)}}
+const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(pos,3));g.setIndex(idx);g.computeVertexNormals();
+const near=(x,y,sg)=>{let b=1e9,r=0;for(let j=0;j<pos.length/3;j++){if(pos[j*3+2]*sg<=0)continue;const d=(pos[j*3]-x)**2+(pos[j*3+1]-y)**2;if(d<b){b=d;r=j}}return new T.Vector3(pos[r*3],pos[r*3+1],pos[r*3+2])};
+return{g,P,N,C,near}}
+const KG=knightGeo(),kn=new T.Group(),kb=new T.Group();
+{/* pedestal */
+const pr=[[0,0],[1.25,0],[1.25,.08],[1.18,.12],[1.18,.2],[1.05,.26],[1.05,.38],[.98,.44],[.98,.5],[0,.5]].map(a=>new T.Vector2(a[0],a[1]));
+const ped=new T.Mesh(new T.LatheGeometry(pr,56),mat.ped);ped.castShadow=ped.receiveShadow=true;kn.add(ped);
+const r1=new T.Mesh(new T.TorusGeometry(1.2,.03,8,64),mat.brass);r1.rotation.x=Math.PI/2;r1.position.y=.15;kn.add(r1);
+const r2=new T.Mesh(new T.TorusGeometry(1.0,.012,6,64),mat.lime);r2.rotation.x=Math.PI/2;r2.position.y=.45;kn.add(r2);
+const tk=new T.InstancedMesh(new T.BoxGeometry(.02,.05,.012),mat.brass,48),d=new T.Object3D();
+for(let i=0;i<48;i++){const a=i/48*Math.PI*2;d.position.set(Math.cos(a)*1.17,.32,Math.sin(a)*1.17);d.rotation.y=-a;d.updateMatrix();tk.setMatrixAt(i,d.matrix)}kn.add(tk);
+/* body */
+const body=new T.Mesh(KG.g,mat.knight);body.castShadow=body.receiveShadow=true;kb.add(body);
+const bi=[];KG.P.forEach((p,i)=>{if(i>KG.N*.55&&p.y>.8&&p.y<3.15&&i%3===0)bi.push(i)});
+const mane=new T.InstancedMesh(new T.ConeGeometry(.1,.5,6),mat.brassD,bi.length*2);let n=0;
+bi.forEach(i=>{const p=KG.P[i],a=KG.P[i-1],b=KG.P[(i+1)%KG.N];let tx=b.x-a.x,ty=b.y-a.y;const l=Math.hypot(tx,ty);tx/=l;ty/=l;
+let dx=ty*.8,dy=-tx*.8-.6;const dl=Math.hypot(dx,dy);dx/=dl;dy/=dl;
+[-1,1].forEach(sg=>{d.position.set(p.x+dx*.2,p.y+dy*.2,sg*.07);d.rotation.set(0,0,Math.atan2(-dx,dy));d.scale.set(1,1,.5);d.updateMatrix();mane.setMatrixAt(n++,d.matrix)})});
+mane.castShadow=true;kb.add(mane);
+[-1,1].forEach(sg=>{/* brass inlay following the neck, eye, nostril */
+const pts=bi.map(i=>{const p=KG.P[i];return KG.near(p.x*.9+KG.C.x*.1,p.y*.9+KG.C.y*.1,sg)});
+kb.add(new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3(pts),48,.016,5),mat.brass));
+const e=KG.near(.98,2.55,sg),ey=new T.Mesh(new T.SphereGeometry(.05,10,8),mat.eye);ey.position.copy(e);kb.add(ey);
+const rg=new T.Mesh(new T.TorusGeometry(.085,.014,6,18),mat.brass);rg.position.copy(e);kb.add(rg);
+const ns=new T.Mesh(new T.SphereGeometry(.05,8,6),mat.dk);ns.position.copy(KG.near(1.52,2.2,sg));ns.scale.set(1,.6,.6);kb.add(ns)});
+kb.scale.setScalar(.85);kb.position.set(-.3,.5,0);kn.add(kb);S.add(kn)}
+
+/* ===== Object B: Arena (board, table, pieces) ===== */
+const board=new T.Group();board.position.set(2,0,-13);S.add(board);
+{const f=new T.Mesh(new T.BoxGeometry(9.2,.3,9.2),mat.frame);f.position.y=1.2;f.castShadow=f.receiveShadow=true;board.add(f);
+const bl=new T.Mesh(new T.BoxGeometry(8.14,.1,8.14),mat.brass);bl.position.y=1.33;board.add(bl);
+const sg=new T.BoxGeometry(.98,.14,.98),sl=new T.InstancedMesh(sg,mat.stone,32),sd=new T.InstancedMesh(sg,mat.forest,32),d=new T.Object3D();let a=0,b=0;
+for(let r=0;r<8;r++)for(let c=0;c<8;c++){d.position.set(c-3.5,1.38,r-3.5);d.updateMatrix();if((r+c)%2===0)sl.setMatrixAt(a++,d.matrix);else sd.setMatrixAt(b++,d.matrix)}
+sl.receiveShadow=sd.receiveShadow=true;board.add(sl,sd);
+/* engraved coordinates */
+const cc=document.createElement('canvas');cc.width=cc.height=1024;const g=cc.getContext('2d');g.fillStyle='rgba(214,184,120,.9)';g.font='bold 36px ui-monospace,Consolas,monospace';g.textAlign='center';g.textBaseline='middle';
+for(let i=0;i<8;i++){const p=(.6+i+.5)/9.2*1024,L='abcdefgh'[i];g.fillText(L,p,1024*.0326);g.fillText(L,p,1024*.9674);g.fillText(String(8-i),1024*.0326,p);g.fillText(String(8-i),1024*.9674,p)}
+const ct=new T.CanvasTexture(cc);ct.encoding=T.sRGBEncoding;ct.anisotropy=4;
+const cm=new T.Mesh(new T.PlaneGeometry(9.2,9.2),new T.MeshBasicMaterial({map:ct,transparent:true,depthWrite:false}));cm.rotation.x=-Math.PI/2;cm.position.y=1.352;board.add(cm);
+/* table */
+[[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([x,z])=>{const l=new T.Mesh(new T.CylinderGeometry(.22,.3,1.05,18),mat.ped);l.position.set(x*3.9,.525,z*3.9);l.castShadow=true;board.add(l);
+const k=new T.Mesh(new T.TorusGeometry(.24,.035,6,20),mat.brass);k.rotation.x=Math.PI/2;k.position.set(x*3.9,1.0,z*3.9);board.add(k)});
+const dais=new T.Mesh(new T.CylinderGeometry(7.4,7.8,.2,8),mat.frame);dais.position.y=.1;dais.receiveShadow=true;board.add(dais);
+const dr=new T.Mesh(new T.TorusGeometry(7.2,.015,4,8),mat.lime);dr.rotation.set(Math.PI/2,0,Math.PI/8);dr.position.y=.21;board.add(dr)}
+/* pieces: lathe silhouettes, knights reuse the sculpted geometry */
+const B0=[[0,0],[.34,0],[.36,.05],[.3,.1]],PR={
+p:B0.concat([[.18,.22],[.12,.4],[.2,.44],[.17,.52],[.2,.6],[.19,.7],[.1,.8],[0,.82]]),
+r:B0.concat([[.25,.2],[.21,.6],[.3,.66],[.3,.84],[.22,.84],[.22,.78],[0,.78]]),
+b:B0.concat([[.22,.2],[.12,.44],[.25,.52],[.24,.66],[.17,.86],[.08,1],[.1,1.04],[.05,1.1],[0,1.12]]),
+q:B0.concat([[.26,.22],[.14,.55],[.28,.68],[.2,.8],[.3,1],[.2,1.02],[.12,1.06],[0,1.06]]),
+k:B0.concat([[.28,.22],[.15,.6],[.3,.72],[.22,.86],[.3,1.02],[.18,1.05],[0,1.05]])};
+const LG={};for(const k in PR)LG[k]=new T.LatheGeometry(PR[k].map(a=>new T.Vector2(a[0],a[1])),20);
+const kSmall=KG.g.clone().translate(-.35,0,0),mbox=new T.BoxGeometry(.12,.14,.12),sph=new T.SphereGeometry(.07,10,8),bar=new T.BoxGeometry(.07,.3,.07),bar2=new T.BoxGeometry(.2,.07,.07);
+function piece(t,w){const g=new T.Group(),m=w?mat.ivory:mat.dk;
+if(t==='n'){const k=new T.Mesh(kSmall,w?mat.ivory:mat.knight);k.scale.setScalar(.27);k.rotation.y=w?Math.PI/2:-Math.PI/2;g.add(k)}
+else g.add(new T.Mesh(LG[t],m));
+if(t==='r')for(let i=0;i<4;i++){const b=new T.Mesh(mbox,m),a=i*Math.PI/2+Math.PI/4;b.position.set(Math.cos(a)*.2,.91,Math.sin(a)*.2);b.rotation.y=-a;g.add(b)}
+if(t==='q'){const s=new T.Mesh(sph,mat.brass);s.position.y=1.12;g.add(s)}
+if(t==='k'){const a=new T.Mesh(bar,mat.brass),b=new T.Mesh(bar2,mat.brass);a.position.y=1.2;b.position.y=1.26;g.add(a,b)}
+g.traverse(o=>{o.castShadow=true});return g}
+const sqp=(c,r,y=1.45)=>new T.Vector3(c-3.5,y,r-3.5),pcs={};
+'rnbqkbnr/ppp1pppp/3p4/4P3/8/2N2N2/PPPP1PPP/R1BQKB1R'.split('/').forEach((row,r)=>{let c=0;for(const ch of row){if(ch>='1'&&ch<='8'){c+=+ch;continue}
+const p=piece(ch.toLowerCase(),ch!==ch.toLowerCase());p.position.copy(sqp(c,r));board.add(p);pcs[c+','+r]=p;c++}});
+
+/* ===== Object D: move trails (decorative demonstration: Nf3-g5, then pressure on f7) ===== */
+const nf=pcs['5,5'],A0=sqp(5,5),A1=sqp(3+3,3),F7=sqp(5,1);
+const curveA=new T.QuadraticBezierCurve3(A0,new T.Vector3((A0.x+A1.x)/2,4.1,(A0.z+A1.z)/2),A1);
+const curveB=new T.QuadraticBezierCurve3(sqp(6,3,1.6),new T.Vector3((A1.x+F7.x)/2,2.5,(A1.z+F7.z)/2),sqp(5,1,1.7));
+const trA=new T.Mesh(new T.TubeGeometry(curveA,40,.03,6),mat.lime),trB=new T.Mesh(new T.TubeGeometry(curveB,30,.025,6),new T.MeshBasicMaterial({color:0xe0bd68}));
+const mk=new T.Mesh(new T.SphereGeometry(.09,10,8),mat.lime);board.add(trA,trB,mk);
+const tiles=[A0,A1,F7].map((p,i)=>{const m=new T.Mesh(new T.PlaneGeometry(.94,.94),new T.MeshBasicMaterial({color:i<2?0xc6ff74:0xe0bd68,transparent:true,opacity:0,depthWrite:false}));m.rotation.x=-Math.PI/2;m.position.set(p.x,1.456,p.z);board.add(m);return m});
+const dRange=(m,f)=>m.geometry.setDrawRange(0,Math.floor(m.geometry.index.count/6*f)*6);dRange(trA,0);dRange(trB,0);
+
+/* ===== Object C: Calculation Lattice ===== */
+const lat=new T.Group();lat.position.set(-2,0,-30);S.add(lat);
+const merge=a=>{let vc=0,ic=0;a.forEach(g=>{vc+=g.attributes.position.count;ic+=g.index.count});const Pp=new Float32Array(vc*3),I=new Uint16Array(ic);let vo=0,io=0;
+a.forEach(g=>{Pp.set(g.attributes.position.array,vo*3);g.index.array.forEach((x,j)=>I[io+j]=x+vo);vo+=g.attributes.position.count;io+=g.index.count;g.dispose()});
+const m=new T.BufferGeometry();m.setAttribute('position',new T.BufferAttribute(Pp,3));m.setIndex(new T.BufferAttribute(I,1));return m};
+let sd0=11;const rnd=()=>(sd0=sd0*16807%2147483647)/2147483647;
+const nodes=[],eg=[[],[],[],[],[]],mg=[];
+(function grow(p,dir,d,main){nodes.push({p,d,main});if(d>=4)return;const n=d===0?3:(rnd()<.3?3:2);
+for(let k=0;k<n;k++){const m=main&&k===0,perp=new T.Vector3().crossVectors(dir,Math.abs(dir.y)>.9?X:Y).normalize();
+const v=dir.clone().applyAxisAngle(perp,m?.12:.5+rnd()*.25).applyAxisAngle(dir,d===0?k*2.094+.4:(k-(n-1)/2)*2.4+rnd()*.5);v.y+=.2;v.normalize();
+const L=(1.7-.22*d)*(m?1:.8+rnd()*.3),q=p.clone().addScaledVector(v,L),mid=p.clone().add(q).multiplyScalar(.5).add(new T.Vector3(rnd()-.5,rnd()-.5,rnd()-.5).multiplyScalar(L*.45));
+const tg=new T.TubeGeometry(new T.QuadraticBezierCurve3(p,mid,q),10,m?.06:.034*(1-.12*d),5);(m?mg:eg[d+1]).push(tg);grow(q,v,d+1,m)}})(new T.Vector3(0,.35,0),Y.clone(),0,true);
+const cDim=new T.Color(0x1d4a35),cLime=new T.Color(0xc6ff74),cGold=new T.Color(0xe0bd68),cEm=new T.Color(0x2fa86a),tc=new T.Color();
+const bm=o=>new T.MeshBasicMaterial(Object.assign({transparent:true,depthWrite:false},o));
+const em=[null],ed=[null];for(let d=1;d<=4;d++){const m=new T.Mesh(merge(eg[d]),bm({color:0x1d4a35,opacity:.8}));lat.add(m);ed.push(m)}
+const mm=new T.Mesh(merge(mg),bm({color:0x2fa86a}));lat.add(mm);
+const nm=new T.InstancedMesh(new T.OctahedronGeometry(1,0),new T.MeshBasicMaterial({color:0xffffff}),nodes.length),dm=new T.Object3D();
+nodes.forEach((n,i)=>nm.setColorAt(i,cDim));lat.add(nm);
+const rings=[];const mainN=nodes.filter(n=>n.main);
+for(let d=1;d<=4;d++){const r=new T.Mesh(new T.TorusGeometry(1+.45*d,.008,4,72),bm({color:0xc6ff74,opacity:.2}));r.rotation.x=Math.PI/2;r.position.y=mainN[d].p.y;lat.add(r);rings.push(r)}
+{const pl=new T.Mesh(new T.CylinderGeometry(1.8,2.1,.3,40),mat.ped);pl.position.y=.15;pl.receiveShadow=true;lat.add(pl);
+const a=new T.Mesh(new T.TorusGeometry(1.95,.03,6,64),mat.brass);a.rotation.x=Math.PI/2;a.position.y=.3;lat.add(a);
+const b=new T.Mesh(new T.TorusGeometry(1.5,.012,4,64),mat.lime);b.rotation.x=Math.PI/2;b.position.y=.31;lat.add(b)}
+const latL=new T.PointLight(0xc6ff74,0,18,2);latL.position.set(-2,3.5,-27);S.add(latL);
+const nCount=nodes.length;let hudS='';
+function updateLattice(tf,now){
+const s=sat((tf-2.4)/.85),ev=sat((tf-3.2)/.6),rf=sat((tf-3.7)/.35),fade=1-.55*sat((tf-5)/1);
+lat.visible=s>.001;if(!lat.visible){latL.intensity=0;return}
+lat.rotation.y=RM?0:now*.00006;
+const g=d=>sat(s*4.4-(d-1));
+for(let d=1;d<=4;d++){const m=ed[d];dRange(m,g(d));tc.copy(cDim).lerp(cLime,.15+.3*ev*(1-rf));m.material.color.copy(tc);m.material.opacity=(.85-.55*rf)*fade;rings[d-1].scale.setScalar(.3+.7*g(d));rings[d-1].material.opacity=.2*g(d)*fade}
+dRange(mm,sat(s*1.3));tc.copy(cEm).lerp(cLime,ev).lerp(cGold,rf);mm.material.color.copy(tc);mm.material.opacity=fade;
+const wave=ev*1.3-.15;
+for(let i=0;i<nCount;i++){const n=nodes[i],gd=n.d?g(n.d):sat(s*8),sc=gd*(n.main?.14-.01*n.d:.075);
+dm.position.copy(n.p);dm.scale.setScalar(Math.max(sc,.0001));dm.rotation.y=i;dm.updateMatrix();nm.setMatrixAt(i,dm.matrix);
+if(n.main){tc.copy(cEm).lerp(cLime,.4+.6*ev).lerp(cGold,rf)}
+else{const l=ev>0?.2+.8*sat(1-Math.abs(i/nCount-wave)*5):0;tc.copy(cDim).lerp(cLime,l*(1-.85*rf))}
+nm.setColorAt(i,tc)}
+nm.instanceMatrix.needsUpdate=true;nm.instanceColor.needsUpdate=true;
+latL.intensity=1.8*sat(s*2)*fade;
+const hs=(tf>2.7&&tf<5.1?'s':'')+(s>0&&ev<=.01?'1':'')+(ev>0&&rf<=.01?'2':'')+(rf>0?'3':'');
+if(hs!==hudS){hudS=hs;$('#hud').classList.toggle('show',hs[0]==='s');for(let i=1;i<4;i++)$('#h'+i).className=hs.includes(String(i))?'on':''}}
+
+/* ===== lighting ===== */
+S.add(new T.HemisphereLight(0x2a5a40,0x040605,.45));
+const key=new T.DirectionalLight(0xfff0d8,1.8);key.castShadow=true;key.shadow.mapSize.set(small?512:1024,small?512:1024);
+const sc=key.shadow.camera;sc.left=sc.bottom=-8;sc.right=sc.top=8;sc.near=1;sc.far=45;key.shadow.bias=-.0005;key.shadow.normalBias=.03;
+const rimE=new T.DirectionalLight(0x2fe08a,1.4),rimL=new T.DirectionalLight(0xc6ff74,1.1),gold=new T.PointLight(0xd6a850,1.4,14,2);
+S.add(key,key.target,rimE,rimE.target,rimL,rimL.target,gold);
+
+/* ===== cinematic camera path (hero, arena, tactical, engine, engine orbit, mindset, finale) ===== */
+const KP=[[2.2,.7,7.2],[9,8.5,-.5],[4.5,3.6,-6.6],[1.5,4.4,-19.5],[-4.8,4.8,-21],[-5,2.4,5.5],[10,5.2,8]],
+KL=[[0,1.9,0],[2,1.4,-13],[2,1.6,-13.2],[-2,3.2,-30],[-2,3.4,-30],[1,1.8,-6],[1.5,2.2,-17]],
+FOV=[36,40,38,42,42,38,44],SX=[-2.3,-3.6,-1.5,-3.2,-3.2,-2.8,0],ROT=[-.3,-.85,-.95,.4,.6,.95,.9],KEY=[.5,1,1,.7,.7,.9,1],RIM=[1.5,1,.8,.8,.8,1,1];
+const NK=KP.length,V=a=>new T.Vector3(a[0],a[1],a[2]);
+const cp=new T.CatmullRomCurve3(KP.map(V),false,'centripetal'),cl=new T.CatmullRomCurve3(KL.map(V),false,'centripetal');
+const smp=(a,tf)=>{const i=Math.min(Math.floor(tf),a.length-2),f=tf-i;return a[i]+(a[i+1]-a[i])*f};
+const _p=new T.Vector3(),_l=new T.Vector3(),_d=new T.Vector3(),_r=new T.Vector3(),_u=new T.Vector3(),_b=new T.Vector3();let aspect=1;
+function pose(tf){
+const t=tf/(NK-1);cp.getPoint(t,_p);cl.getPoint(t,_l);const port=aspect<.9;
+if(port)_p.sub(_l).multiplyScalar(1.45).add(_l);
+_d.subVectors(_l,_p).normalize();_r.crossVectors(_d,Y).normalize();_u.crossVectors(_r,_d);
+let sx=smp(SX,tf),sy=0;if(port){sx=0;sy=-1.5}else if(aspect<1.3)sx*=.55;
+_p.addScaledVector(_r,sx).addScaledVector(_u,sy);_l.addScaledVector(_r,sx).addScaledVector(_u,sy);
+cam.position.copy(_p);cam.lookAt(_l);cam.fov=smp(FOV,tf)*(port?1.12:1);cam.updateProjectionMatrix();
+const ki=smp(KEY,tf),ri=smp(RIM,tf);
+key.position.set(_l.x-6,_l.y+9,_l.z+7);key.target.position.copy(_l);key.intensity=1.8*ki;
+_b.copy(_l).addScaledVector(_d,-10);
+rimE.position.copy(_b).addScaledVector(_r,-6);rimE.position.y+=3;rimL.position.copy(_b).addScaledVector(_r,7);rimL.position.y+=4;
+rimE.target.position.copy(_l);rimL.target.position.copy(_l);rimE.intensity=1.4*ri;rimL.intensity=1.1*ri;
+gold.position.set(_l.x-3,_l.y+2.5,_l.z+2)}
+function scene(tf,now){
+pose(tf);kn.rotation.y=smp(ROT,tf);
+const pa=sat((tf-.9)/.9),pb=sat((tf-1.7)/.35),e=pa*pa*(3-2*pa);
+curveA.getPoint(e,_b);nf.position.copy(_b);mk.visible=pa>0&&pa<1;mk.position.copy(_b).y+=.9;
+dRange(trA,pa);dRange(trB,pb);
+tiles[0].material.opacity=.55*sat(pa*5);tiles[1].material.opacity=.55*sat((pa-.7)*4);tiles[2].material.opacity=.5*pb;
+updateLattice(tf,now)}
+
+/* ===== scroll → continuous story position ===== */
+const AS=[['#home .stage',.5],['#arena .stage',.5],['#arena .live',.5],['#engine .stage',.25],['#engine .stage',.8],['#mindset .stage',.5],['#about .stage',.6]];
+let AN=[],tft=0,tfc=0,dirty=3;
+function measure(){AN=AS.map(([s,f])=>{const r=$(s).getBoundingClientRect();return r.top+scrollY+r.height*f});for(let i=1;i<AN.length;i++)AN[i]=Math.max(AN[i],AN[i-1]+1)}
+function target(){const y=scrollY+innerHeight*.5,n=AN.length;if(y<=AN[0])return 0;if(y>=AN[n-1])return n-1;let i=0;while(i<n-2&&y>AN[i+1])i++;const u=(y-AN[i])/(AN[i+1]-AN[i]);return i+u*u*(3-2*u)}
+function resize(){const w=innerWidth,h=innerHeight;R.setSize(w,h,false);aspect=w/h;cam.aspect=aspect;measure();tft=target();dirty=3}
+addEventListener('resize',resize);
+addEventListener('scroll',()=>{tft=target();dirty=Math.max(dirty,2)},{passive:true});
+addEventListener('load',()=>{measure();tft=tfc=target();dirty=3});
+if('ResizeObserver'in window)new ResizeObserver(()=>{measure();tft=target();dirty=2}).observe(document.body);
+resize();tfc=tft;
+
+/* ===== render loop: only renders while something changes ===== */
+let last=performance.now(),ema=.016,nf2=0,tuned=false;
+function loop(now){requestAnimationFrame(loop);
+if(document.hidden){last=now;return}
+const dt=Math.min(.05,(now-last)/1000);last=now;
+const amb=!RM&&tfc>2.6&&tfc<5.3,d=tft-tfc,mv=Math.abs(d)>5e-4;
+if(mv){tfc=RM?tft:tfc+d*(1-Math.exp(-dt*6));if(Math.abs(tft-tfc)<5e-4)tfc=tft}
+if(!mv&&!amb&&dirty<=0)return;
+dirty--;scene(tfc,now);R.render(S,cam);
+if(!tuned&&(mv||amb)){ema=ema*.95+dt*.05;if(++nf2>120){tuned=true;
+if(ema>.034&&dpr>1){dpr=1;R.setPixelRatio(1);R.setSize(innerWidth,innerHeight,false)}
+if(ema>.045){key.castShadow=false;R.shadowMap.enabled=false;S.traverse(o=>{if(o.material)o.material.needsUpdate=true})}}}}
+requestAnimationFrame(loop)}
+})();
+</script>
+</body>
+</html>
